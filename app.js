@@ -149,12 +149,14 @@ const createPlayers = (config) => {
   const players = [];
   const total = config.jugadoresTotales;
   const humanCount = total - config.numeroIA;
+  const aiStyles = ["conservador", "estándar", "agresivo"];
 
   for (let i = 0; i < total; i += 1) {
     players.push({
       id: i + 1,
       nombre: i < humanCount ? `Jugador ${i + 1}` : `IA ${i + 1 - humanCount}`,
       esHumano: i < humanCount,
+      estilo: i < humanCount ? "humano" : aiStyles[(i - humanCount) % aiStyles.length],
       stack: config.stackInicial,
       hand: [],
       apuestaActual: 0,
@@ -253,6 +255,14 @@ const settleBetsToPot = (gameState) => {
 
 const isHandOver = (gameState) => gameState.handOver || gameState.blocked;
 
+const logAction = (gameState, message) => {
+  gameState.actionLog.push(message);
+};
+
+const getPotSize = (gameState) =>
+  gameState.bote +
+  gameState.players.reduce((sum, player) => sum + player.apuestaActual, 0);
+
 const createGameState = (config) => {
   const players = createPlayers(config);
   const deck = shuffleDeck(createDeck());
@@ -277,8 +287,10 @@ const createGameState = (config) => {
     blocked: false,
     handOver: false,
     winnerIds: [],
+    actionLog: [],
   };
 
+  logAction(gameState, "Nueva mano iniciada.");
   const { smallBlindIndex, bigBlindIndex } = getBlindIndexes(gameState);
   postBlind(players[smallBlindIndex], config.smallBlind);
   postBlind(players[bigBlindIndex], config.bigBlind);
@@ -286,6 +298,14 @@ const createGameState = (config) => {
   gameState.currentBet = Math.max(
     players[smallBlindIndex].apuestaActual,
     players[bigBlindIndex].apuestaActual
+  );
+  logAction(
+    gameState,
+    `${players[smallBlindIndex].nombre} publica SB ${players[smallBlindIndex].apuestaActual}.`
+  );
+  logAction(
+    gameState,
+    `${players[bigBlindIndex].nombre} publica BB ${players[bigBlindIndex].apuestaActual}.`
   );
 
   const firstToAct =
@@ -300,12 +320,15 @@ const dealStreet = (gameState) => {
   if (gameState.fase === "preflop") {
     gameState.comunitarias.push(...dealCommunityCards(gameState.deck, 3));
     gameState.fase = "flop";
+    logAction(gameState, "Se reparte el flop.");
   } else if (gameState.fase === "flop") {
     gameState.comunitarias.push(...dealCommunityCards(gameState.deck, 1));
     gameState.fase = "turn";
+    logAction(gameState, "Se reparte el turn.");
   } else if (gameState.fase === "turn") {
     gameState.comunitarias.push(...dealCommunityCards(gameState.deck, 1));
     gameState.fase = "river";
+    logAction(gameState, "Se reparte el river.");
   } else if (gameState.fase === "river") {
     gameState.fase = "showdown";
   }
@@ -330,6 +353,7 @@ const finalizeWinnerByFold = (gameState) => {
   gameState.bote = 0;
   gameState.handOver = true;
   gameState.fase = "showdown";
+  gameState.actionLog.push(`${winner.nombre} gana por fold.`);
 };
 
 const getStraightHigh = (values) => {
@@ -443,6 +467,41 @@ const evaluateSevenCards = (cards) => {
   );
 };
 
+const evaluateHandStrength = (hand, comunitarias, fase) => {
+  if (fase === "preflop") {
+    const [first, second] = hand;
+    if (!first || !second) {
+      return 0;
+    }
+    const firstValue = rankValues[first.rank];
+    const secondValue = rankValues[second.rank];
+    const highCard = Math.max(firstValue, secondValue);
+    const lowCard = Math.min(firstValue, secondValue);
+    const isPair = firstValue === secondValue;
+    const suited = first.suit === second.suit;
+
+    let score = (highCard + lowCard) / 28;
+    if (isPair) {
+      score += 0.4;
+    }
+    if (suited) {
+      score += 0.1;
+    }
+    return Math.min(score, 1);
+  }
+
+  const available = [...hand, ...comunitarias].filter(Boolean);
+  if (available.length < 5) {
+    return 0.3;
+  }
+  const best = evaluateSevenCards(available);
+  const rankScore = best.rank / 8;
+  const kickerScore =
+    best.tiebreak.reduce((sum, value, index) => sum + value / (14 * (index + 1)), 0) /
+    best.tiebreak.length;
+  return Math.min(rankScore + kickerScore * 0.2, 1);
+};
+
 const resolveShowdown = (gameState) => {
   settleBetsToPot(gameState);
   const activePlayers = getActivePlayers(gameState);
@@ -466,6 +525,9 @@ const resolveShowdown = (gameState) => {
   gameState.winnerIds = winners.map((winner) => winner.id);
   gameState.bote = 0;
   gameState.handOver = true;
+  gameState.actionLog.push(
+    `Showdown: ${winners.map((winner) => winner.nombre).join(", ")} gana.`
+  );
 };
 
 const autoRunout = (gameState) => {
@@ -504,6 +566,54 @@ const completeBettingRound = (gameState) => {
   settleBetsToPot(gameState);
   dealStreet(gameState);
   startNextStreet(gameState);
+};
+
+const decideAIAction = (gameState, player) => {
+  const strength = evaluateHandStrength(
+    player.hand,
+    gameState.comunitarias,
+    gameState.fase
+  );
+  const callAmount = gameState.currentBet - player.apuestaActual;
+  const potSize = Math.max(getPotSize(gameState), gameState.ciegas.bigBlind);
+  const styleThresholds = {
+    conservador: { fold: 0.4, raise: 0.75, allIn: 0.65 },
+    estándar: { fold: 0.25, raise: 0.65, allIn: 0.55 },
+    agresivo: { fold: 0.15, raise: 0.55, allIn: 0.45 },
+  };
+  const thresholds = styleThresholds[player.estilo] || styleThresholds.estándar;
+
+  if (callAmount <= 0) {
+    if (strength >= thresholds.raise && player.stack >= gameState.minRaise) {
+      const target = Math.min(
+        player.apuestaActual + player.stack,
+        gameState.minRaise + Math.floor(potSize * 0.4)
+      );
+      return { action: ACTIONS.BET, amount: Math.max(target, gameState.minRaise) };
+    }
+    return { action: ACTIONS.CHECK };
+  }
+
+  if (callAmount >= player.stack) {
+    if (strength >= thresholds.allIn) {
+      return { action: ACTIONS.ALL_IN };
+    }
+    return { action: ACTIONS.FOLD };
+  }
+
+  if (strength < thresholds.fold && callAmount > potSize * 0.35) {
+    return { action: ACTIONS.FOLD };
+  }
+
+  if (strength >= thresholds.raise && player.stack > callAmount + gameState.minRaise) {
+    const target = Math.min(
+      player.apuestaActual + player.stack,
+      gameState.currentBet + gameState.minRaise + Math.floor(potSize * 0.3)
+    );
+    return { action: ACTIONS.RAISE, amount: Math.max(target, gameState.currentBet) };
+  }
+
+  return { action: ACTIONS.CALL };
 };
 
 const commitBet = (gameState, player, targetAmount) => {
@@ -549,6 +659,7 @@ const handleAction = (action, amount = 0) => {
     gameState.pendingActionIds = gameState.pendingActionIds.filter(
       (id) => id !== player.id
     );
+    logAction(gameState, `${player.nombre} se retira.`);
   } else if (action === ACTIONS.CHECK) {
     if (callAmount !== 0) {
       gameState.error = "No puedes hacer check con apuesta pendiente.";
@@ -557,12 +668,14 @@ const handleAction = (action, amount = 0) => {
     gameState.pendingActionIds = gameState.pendingActionIds.filter(
       (id) => id !== player.id
     );
+    logAction(gameState, `${player.nombre} pasa.`);
   } else if (action === ACTIONS.CALL) {
     if (callAmount <= 0) {
       gameState.error = "No hay apuesta para igualar.";
       return;
     }
     commitBet(gameState, player, gameState.currentBet);
+    logAction(gameState, `${player.nombre} iguala ${gameState.currentBet}.`);
   } else if (action === ACTIONS.BET) {
     if (gameState.currentBet > 0) {
       gameState.error = "Ya hay apuesta, debes subir o igualar.";
@@ -573,6 +686,7 @@ const handleAction = (action, amount = 0) => {
       return;
     }
     commitBet(gameState, player, amount);
+    logAction(gameState, `${player.nombre} apuesta ${amount}.`);
   } else if (action === ACTIONS.RAISE) {
     if (gameState.currentBet === 0) {
       gameState.error = "Debes apostar antes de subir.";
@@ -584,8 +698,10 @@ const handleAction = (action, amount = 0) => {
       return;
     }
     commitBet(gameState, player, amount);
+    logAction(gameState, `${player.nombre} sube a ${amount}.`);
   } else if (action === ACTIONS.ALL_IN) {
     commitBet(gameState, player, player.apuestaActual + player.stack);
+    logAction(gameState, `${player.nombre} va all-in.`);
   }
 
   updateUniqueness(gameState);
@@ -607,19 +723,8 @@ const autoActionForPlayer = () => {
   if (!player || player.esHumano || player.estado !== "activo") {
     return false;
   }
-
-  const callAmount = gameState.currentBet - player.apuestaActual;
-  if (callAmount <= 0) {
-    handleAction(ACTIONS.CHECK);
-    return true;
-  }
-
-  if (callAmount >= player.stack) {
-    handleAction(ACTIONS.ALL_IN);
-    return true;
-  }
-
-  handleAction(ACTIONS.CALL);
+  const decision = decideAIAction(gameState, player);
+  handleAction(decision.action, decision.amount ?? 0);
   return true;
 };
 
@@ -760,6 +865,9 @@ const renderConfigView = () => {
   app.appendChild(container);
 };
 
+const shouldRevealAI = (gameState) =>
+  gameState.handOver || allActiveAllIn(gameState);
+
 const createCardList = (cards, totalSlots = cards.length) => {
   const list = document.createElement("div");
   list.className = "card-list";
@@ -775,6 +883,7 @@ const createCardList = (cards, totalSlots = cards.length) => {
 const createPlayerList = (gameState) => {
   const list = document.createElement("div");
   list.className = "player-list";
+  const revealAI = shouldRevealAI(gameState);
 
   gameState.players.forEach((player, index) => {
     const item = document.createElement("div");
@@ -784,10 +893,14 @@ const createPlayerList = (gameState) => {
     }
     item.innerHTML = `
       <div class="player-name">${player.nombre}</div>
+      <div class="player-meta">Estilo: ${player.estilo}</div>
       <div class="player-meta">Stack: ${player.stack}</div>
       <div class="player-meta">Apuesta: ${player.apuestaActual}</div>
       <div class="player-meta">Estado: ${player.estado}</div>
     `;
+    if (!player.esHumano && revealAI) {
+      item.appendChild(createCardList(player.hand, 2));
+    }
     list.appendChild(item);
   });
 
@@ -931,6 +1044,21 @@ const renderTableView = () => {
   errorMessage.textContent =
     state.gameState?.error || "Sin errores en el reparto.";
 
+  const logSection = document.createElement("details");
+  logSection.className = "action-log";
+  logSection.open = false;
+  const logSummary = document.createElement("summary");
+  logSummary.textContent = "Log de acciones";
+  logSection.appendChild(logSummary);
+  const logList = document.createElement("ul");
+  logList.className = "action-log-list";
+  state.gameState?.actionLog.forEach((entry) => {
+    const item = document.createElement("li");
+    item.textContent = entry;
+    logList.appendChild(item);
+  });
+  logSection.appendChild(logList);
+
   const resultMessage = document.createElement("div");
   resultMessage.className = "result-message";
   if (state.gameState?.handOver) {
@@ -972,6 +1100,7 @@ const renderTableView = () => {
     handSection,
     playersSection,
     errorMessage,
+    logSection,
     resultMessage,
     buttonRow
   );
