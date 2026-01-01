@@ -7,7 +7,6 @@ const state = {
     smallBlind: 10,
     bigBlind: 20,
   },
-
   gameMode: null,
   gameState: null,
   tournamentTimerId: null,
@@ -21,12 +20,6 @@ const state = {
     chatOpen: false,
     chatMessages: [],
   },
-
-
-  gameMode: null,
-  gameState: null,
-  tournamentTimerId: null,
-  gameState: null,
 };
 
 const ACTIONS = {
@@ -152,19 +145,9 @@ const dealCard = (deck) => deck.shift();
 const dealInitialHands = (deck, players) => {
   for (let round = 0; round < 2; round += 1) {
     players.forEach((player) => {
-
       if (player.estado !== "eliminado") {
         player.hand.push(dealCard(deck));
       }
-
-      if (player.estado !== "eliminado") {
-        player.hand.push(dealCard(deck));
-      }
-
-      if (player.estado !== "eliminado") {
-        player.hand.push(dealCard(deck));
-      }
-      player.hand.push(dealCard(deck));
     });
   }
 };
@@ -225,19 +208,9 @@ const createPlayers = (config) => {
 };
 
 const getActivePlayers = (gameState) =>
-
   gameState.players.filter(
     (player) => player.estado !== "foldeado" && player.estado !== "eliminado"
   );
-
-
-const getEligiblePlayers = (gameState) =>
-  getActivePlayers(gameState).filter((player) => player.stack > 0);
-
-  gameState.players.filter(
-    (player) => player.estado !== "foldeado" && player.estado !== "eliminado"
-  );
-  gameState.players.filter((player) => player.estado !== "foldeado");
 
 const getEligiblePlayers = (gameState) =>
   getActivePlayers(gameState).filter((player) => player.stack > 0);
@@ -400,24 +373,7 @@ const postBlind = (player, amount) => {
 
 const getBlindIndexes = (gameState, dealerIndex) => {
   const liveCount = getLivePlayerCount(gameState);
-  let smallBlindIndex = -1;
-  let bigBlindIndex = -1;
-
-  if (liveCount <= 1) {
-    return { smallBlindIndex, bigBlindIndex };
-  }
-
-  if (liveCount === 2) {
-    smallBlindIndex = dealerIndex;
-    bigBlindIndex = getNextLiveIndex(gameState, dealerIndex);
-    return { smallBlindIndex, bigBlindIndex };
-  }
-
-  smallBlindIndex = getNextLiveIndex(gameState, dealerIndex);
-  bigBlindIndex = getNextLiveIndex(gameState, smallBlindIndex);
-
-const getBlindIndexes = (gameState, dealerIndex) => {
-  const liveCount = getLivePlayerCount(gameState);
+  
   if (liveCount <= 1) {
     return { smallBlindIndex: -1, bigBlindIndex: -1 };
   }
@@ -430,17 +386,6 @@ const getBlindIndexes = (gameState, dealerIndex) => {
 
   const smallBlindIndex = getNextLiveIndex(gameState, dealerIndex);
   const bigBlindIndex = getNextLiveIndex(gameState, smallBlindIndex);
-
-const getBlindIndexes = (gameState) => {
-  const { players, dealerIndex } = gameState;
-  if (players.length === 2) {
-    const smallBlindIndex = dealerIndex;
-    const bigBlindIndex = (dealerIndex + 1) % players.length;
-    return { smallBlindIndex, bigBlindIndex };
-  }
-
-  const smallBlindIndex = (dealerIndex + 1) % players.length;
-  const bigBlindIndex = (dealerIndex + 2) % players.length;
   return { smallBlindIndex, bigBlindIndex };
 };
 
@@ -511,30 +456,15 @@ const createGameState = (config) => {
     comunitarias: [],
     bote: 0,
     ciegas: {
-
       smallBlind: initialBlinds.sb,
       bigBlind: initialBlinds.bb,
-
-      smallBlind: initialBlinds.sb,
-      bigBlind: initialBlinds.bb,
-
-      smallBlind: initialBlinds.sb,
-      bigBlind: initialBlinds.bb,
-      smallBlind: config.smallBlind,
-      bigBlind: config.bigBlind,
     },
     dealerIndex: 0,
     turnoIndex: 0,
     fase: "preflop",
     deck,
     currentBet: 0,
-
     minRaise: initialBlinds.bb,
-
-    minRaise: initialBlinds.bb,
-
-    minRaise: initialBlinds.bb,
-    minRaise: config.bigBlind,
     pendingActionIds: [],
     error: null,
     blocked: false,
@@ -542,7 +472,6 @@ const createGameState = (config) => {
     winnerIds: [],
     actionLog: [],
     initialTotal: players.length * config.stackInicial,
-
     gameMode,
     blindLevelIndex: tournamentLevel,
     pendingBlindLevel: null,
@@ -553,10 +482,12 @@ const createGameState = (config) => {
   logAction(gameState, "Nueva mano iniciada.");
   const dealerIndex = getNextLiveIndex(gameState, gameState.dealerIndex - 1);
   gameState.dealerIndex = dealerIndex === -1 ? 0 : dealerIndex;
+  
   const { smallBlindIndex, bigBlindIndex } = getBlindIndexes(
     gameState,
     gameState.dealerIndex
   );
+  
   if (smallBlindIndex !== -1) {
     postBlind(players[smallBlindIndex], gameState.ciegas.smallBlind);
   }
@@ -569,6 +500,7 @@ const createGameState = (config) => {
   const bigBlindBet =
     bigBlindIndex === -1 ? 0 : players[bigBlindIndex].apuestaActual;
   gameState.currentBet = Math.max(smallBlindBet, bigBlindBet);
+  
   if (smallBlindIndex !== -1) {
     logAction(
       gameState,
@@ -590,33 +522,7 @@ const createGameState = (config) => {
 
   enforceInvariants(gameState, "init");
   startTournamentTimer(gameState);
-
-
-  };
-
-  logAction(gameState, "Nueva mano iniciada.");
-  const { smallBlindIndex, bigBlindIndex } = getBlindIndexes(gameState);
-  postBlind(players[smallBlindIndex], config.smallBlind);
-  postBlind(players[bigBlindIndex], config.bigBlind);
-
-  gameState.currentBet = Math.max(
-    players[smallBlindIndex].apuestaActual,
-    players[bigBlindIndex].apuestaActual
-  );
-  logAction(
-    gameState,
-    `${players[smallBlindIndex].nombre} publica SB ${players[smallBlindIndex].apuestaActual}.`
-  );
-  logAction(
-    gameState,
-    `${players[bigBlindIndex].nombre} publica BB ${players[bigBlindIndex].apuestaActual}.`
-  );
-
-  const firstToAct =
-    players.length === 2 ? smallBlindIndex : (bigBlindIndex + 1) % players.length;
-  startBettingRound(gameState, firstToAct);
-
-  enforceInvariants(gameState, "init");
+  
   return gameState;
 };
 
@@ -1320,27 +1226,12 @@ const runAutoActions = () => {
     return;
   }
 
-
   const currentPlayer = gameState.players[gameState.turnoIndex];
   if (!currentPlayer) {
     return;
   }
   if (!currentPlayer.esHumano) {
     scheduleAiAction();
-  }
-};
-
-
-  let guard = 0;
-  while (
-    gameState.turnoIndex !== -1 &&
-    guard < 25 &&
-    autoActionForPlayer()
-  ) {
-    guard += 1;
-    if (isHandOver(gameState)) {
-      break;
-    }
   }
 };
 
@@ -1813,13 +1704,8 @@ const getStatusMessage = (gameState) => {
   }
   const currentPlayer = gameState.players[gameState.turnoIndex];
   if (currentPlayer?.esHumano) {
-
     const timeLeft = state.ui.humanTimeLeft ?? 30;
     return `Tu turno (${timeLeft}s)`;
-
-    const timeLeft = state.ui.humanTimeLeft ?? 30;
-    return `Tu turno (${timeLeft}s)`;
-    return "Tu turno";
   }
   if (currentPlayer) {
     return `Turno de ${currentPlayer.nombre}`;
@@ -1917,8 +1803,6 @@ const renderActions = (gameState, humanPlayer) => {
     isHandOver(gameState) ||
     gameState.blocked ||
     Boolean(state.ui.overlay);
-
-  const disableActions = !isTurn || isHandOver(gameState) || gameState.blocked;
   const callAmount = gameState.currentBet - humanPlayer.apuestaActual;
   const disableCheck = callAmount > 0;
   const disableCall = callAmount <= 0;
@@ -1960,42 +1844,24 @@ const renderActions = (gameState, humanPlayer) => {
 
   const foldButton = makeButton("Fold", () => {
     handleHumanAction(ACTIONS.FOLD);
-
-  const checkButton = makeButton("Check", () => {
-    handleAction(ACTIONS.CHECK);
-    runAutoActions();
-    renderTableView();
-  });
-
-  const callButton = makeButton("Call", () => {
-    handleAction(ACTIONS.CALL);
-    runAutoActions();
-    renderTableView();
-  });
-
-  const betButton = makeButton("Bet", () => {
-    handleAction(ACTIONS.BET, Number(amountInput.value));
-    runAutoActions();
-    renderTableView();
-  });
-
-  const raiseButton = makeButton("Raise", () => {
-    handleAction(ACTIONS.RAISE, Number(amountInput.value));
-    runAutoActions();
-    renderTableView();
-  });
-
-  const allInButton = makeButton("All-in", () => {
-    handleAction(ACTIONS.ALL_IN);
-    runAutoActions();
-    renderTableView();
-  });
-
-  const foldButton = makeButton("Fold", () => {
-    handleAction(ACTIONS.FOLD);
-    runAutoActions();
-    renderTableView();
   }, "secondary");
+
+  [
+    checkButton,
+    callButton,
+    betButton,
+    raiseButton,
+    allInButton,
+    foldButton,
+  ].forEach((button) => {
+    button.disabled = disableActions;
+    actionRow.appendChild(button);
+  });
+
+  if (!disableActions) {
+    checkButton.disabled = disableCheck;
+    callButton.disabled = disableCall;
+  }
 
   [
     checkButton,
@@ -2057,16 +1923,9 @@ const renderTableView = () => {
   resetButton.className = "secondary";
   resetButton.textContent = "Nueva mesa";
   resetButton.addEventListener("click", () => {
-
     clearAllTimers();
     state.ui.chatOpen = false;
     state.ui.chatMessages = [];
-
-    clearAllTimers();
-    state.ui.chatOpen = false;
-    state.ui.chatMessages = [];
-
-    stopTournamentTimer();
     state.currentView = "config";
     renderConfigView();
   });
@@ -2089,19 +1948,9 @@ const renderTableView = () => {
   const errorMessage = document.createElement("div");
   errorMessage.className = "error-message";
   errorMessage.textContent =
-
     state.gameState?.error ||
     state.gameState?.noticeMessage ||
     "Sin errores en el reparto.";
-
-    state.gameState?.error ||
-    state.gameState?.noticeMessage ||
-    "Sin errores en el reparto.";
-
-    state.gameState?.error ||
-    state.gameState?.noticeMessage ||
-    "Sin errores en el reparto.";
-    state.gameState?.error || "Sin errores en el reparto.";
 
   topbar.append(topRow, metaRow, statusMessage, errorMessage);
 
@@ -2125,9 +1974,6 @@ const renderTableView = () => {
 
   community.append(communityTitle, phaseLabel, communityCards, pot);
 
-  community.append(communityTitle, phaseLabel, communityCards, pot);
-  community.append(communityTitle, communityCards, pot);
-
   const seats = document.createElement("div");
   seats.className = "seats";
 
@@ -2144,11 +1990,7 @@ const renderTableView = () => {
     const seat = createSeat(
       player,
       index === state.gameState.turnoIndex,
-
       revealAI || (player.esHumano && revealHuman),
-
-      revealAI || (player.esHumano && revealHuman),
-      revealAI || player.esHumano,
       player.esHumano
     );
     seats.appendChild(seat);
@@ -2271,13 +2113,6 @@ const renderTableView = () => {
     overlayContent.append(message, actionButton);
     overlay.appendChild(overlayContent);
     container.appendChild(overlay);
-
-  topbar.append(logToggle);
-
-  container.append(topbar, pokerTable, resultMessage, logPanel);
-
-  if (state.gameState && humanPlayer) {
-    container.appendChild(renderActions(state.gameState, humanPlayer));
   }
 
   app.appendChild(container);
@@ -2291,5 +2126,4 @@ const renderApp = () => {
 
   renderConfigView();
 };
-
 renderApp();
