@@ -16,5 +16,6 @@ Proyecto base para un juego de poker en el navegador con JavaScript puro.
 - Pantalla de configuración con validaciones para crear la mesa.
 - Navegación entre vistas sin recargar la página.
 - Placeholder de la mesa para preparar la lógica del juego en próximas fases.
+- Motor de cartas con barajado seguro y estado inicial de partida.
 
 > Nota: la lógica completa de poker (reparto, apuestas, IA, etc.) aún no está implementada.
