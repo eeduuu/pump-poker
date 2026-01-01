@@ -19,6 +19,7 @@ const state = {
     humanTimeLeft: null,
     chatOpen: false,
     chatMessages: [],
+    chatDraft: "",
   },
 };
 
@@ -342,20 +343,20 @@ const syncTurnUi = () => {
 
   if (currentPlayer.esHumano) {
     if (state.ui.lastTurnPlayerId !== currentPlayer.id) {
-      state.ui.revealedPlayerId = null;
-      showOverlay(
-        `Turno de ${currentPlayer.nombre}`,
-        "Pulsa para ver tus cartas"
-      );
+      // Sin overlay: revelamos automáticamente las cartas del humano en su turno
+      state.ui.revealedPlayerId = currentPlayer.id;
+      clearOverlay();
       startHumanTurnTimer(currentPlayer.id);
       state.ui.lastTurnPlayerId = currentPlayer.id;
     }
   } else {
+    // Turno de IA: no revelamos cartas humanas ni mostramos overlay
     state.ui.revealedPlayerId = null;
     clearOverlay();
     stopHumanTurnTimer();
     state.ui.lastTurnPlayerId = currentPlayer.id;
   }
+
 };
 const updateUniqueness = (gameState) => {
   enforceInvariants(gameState, "cards");
@@ -1357,7 +1358,6 @@ const startNewHand = () => {
   stopAiDelay();
   syncTurnUi();
 
-  state.gameState = createGameState(state.gameConfig);
   runAutoActions();
 };
 
@@ -1811,11 +1811,8 @@ const renderActions = (gameState, humanPlayer) => {
   const handleHumanAction = (actionType, amountValue) => {
     handleAction(actionType, amountValue ?? 0);
     state.ui.revealedPlayerId = null;
-    if (gameState.handOver || gameState.blocked) {
-      clearOverlay();
-    } else {
-      showOverlay("Pasa el dispositivo al siguiente jugador", "Continuar");
-    }
+    clearOverlay();
+
     stopHumanTurnTimer();
     syncTurnUi();
     runAutoActions();
@@ -2066,18 +2063,23 @@ const renderTableView = () => {
   const chatInput = document.createElement("input");
   chatInput.type = "text";
   chatInput.placeholder = "Escribe un mensaje";
+  chatInput.value = state.ui.chatDraft || "";
+  chatInput.addEventListener("input", (e) => {
+    state.ui.chatDraft = e.target.value;
+  });
+
   const chatSend = document.createElement("button");
   chatSend.type = "button";
   chatSend.textContent = "Enviar";
   chatSend.addEventListener("click", () => {
-    const value = chatInput.value.trim();
-    if (!value) {
-      return;
-    }
+    const value = (state.ui.chatDraft || "").trim();
+    if (!value) return;
+
     state.ui.chatMessages = [...state.ui.chatMessages, value].slice(-30);
-    chatInput.value = "";
+    state.ui.chatDraft = "";
     renderTableView();
   });
+
   chatForm.append(chatInput, chatSend);
   chatPanel.append(chatHeader, chatList, chatForm);
 
@@ -2085,10 +2087,11 @@ const renderTableView = () => {
 
   container.append(topbar, pokerTable, resultMessage, logPanel, chatPanel);
 
-  const currentPlayer = state.gameState?.players[state.gameState.turnoIndex];
-  if (state.gameState && currentPlayer?.esHumano) {
-    container.appendChild(renderActions(state.gameState, currentPlayer));
+  const humanPlayer = state.gameState?.players.find((p) => p.esHumano);
+  if (state.gameState && humanPlayer) {
+    container.appendChild(renderActions(state.gameState, humanPlayer));
   }
+
 
   if (state.ui.overlay) {
     const overlay = document.createElement("div");
