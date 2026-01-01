@@ -195,12 +195,60 @@ const getNextIndex = (players, startIndex, predicate) => {
   return -1;
 };
 
-const updateUniqueness = (gameState) => {
-  if (!verifyUniqueCards(gameState)) {
-    gameState.error =
-      "Se detectaron cartas duplicadas. La mano quedó bloqueada.";
-    gameState.blocked = true;
+const assertGameInvariants = (gameState, context) => {
+  const cards = collectCardsInPlay(gameState);
+  const uniqueIds = new Set(cards.map((card) => card.id));
+  if (uniqueIds.size !== cards.length) {
+    return { ok: false, error: "Se detectaron cartas duplicadas." };
   }
+
+  const negativeStack = gameState.players.some((player) => player.stack < 0);
+  if (negativeStack) {
+    return { ok: false, error: "Se detectó un stack negativo." };
+  }
+
+  const negativeBet = gameState.players.some(
+    (player) => player.apuestaActual < 0
+  );
+  if (negativeBet) {
+    return { ok: false, error: "Se detectó una apuesta negativa." };
+  }
+
+  if (gameState.bote < 0) {
+    return { ok: false, error: "El bote es negativo." };
+  }
+
+  const totalSystem = gameState.players.reduce(
+    (sum, player) => sum + player.stack + player.apuestaActual,
+    gameState.bote
+  );
+
+  if (Math.abs(totalSystem - gameState.initialTotal) > 0.001) {
+    return {
+      ok: false,
+      error:
+        "Inconsistencia financiera detectada (total fuera de balance).",
+    };
+  }
+
+  return { ok: true };
+};
+
+const enforceInvariants = (gameState, context) => {
+  if (!gameState || gameState.blocked) {
+    return false;
+  }
+  const result = assertGameInvariants(gameState, context);
+  if (!result.ok) {
+    gameState.error = result.error;
+    gameState.blocked = true;
+    return false;
+  }
+  return true;
+};
+
+const updateUniqueness = (gameState) => {
+  enforceInvariants(gameState, "cards");
 };
 
 const postBlind = (player, amount) => {
@@ -300,6 +348,7 @@ const createGameState = (config) => {
     handOver: false,
     winnerIds: [],
     actionLog: [],
+    initialTotal: players.length * config.stackInicial,
   };
 
   logAction(gameState, "Nueva mano iniciada.");
@@ -324,7 +373,7 @@ const createGameState = (config) => {
     players.length === 2 ? smallBlindIndex : (bigBlindIndex + 1) % players.length;
   startBettingRound(gameState, firstToAct);
 
-  updateUniqueness(gameState);
+  enforceInvariants(gameState, "init");
   return gameState;
 };
 
@@ -345,7 +394,7 @@ const dealStreet = (gameState) => {
     gameState.fase = "showdown";
   }
 
-  updateUniqueness(gameState);
+  enforceInvariants(gameState, "street");
 };
 
 const allActiveAllIn = (gameState) =>
@@ -366,6 +415,7 @@ const finalizeWinnerByFold = (gameState) => {
   gameState.handOver = true;
   gameState.fase = "showdown";
   gameState.actionLog.push(`${winner.nombre} gana por fold.`);
+  enforceInvariants(gameState, "fold-end");
 };
 
 const getStraightHigh = (values) => {
@@ -597,6 +647,12 @@ const getAiFeatures = (gameState, player) => {
 };
 
 const resolveShowdown = (gameState) => {
+  if (gameState.handOver || gameState.blocked) {
+    return;
+  }
+  if (!enforceInvariants(gameState, "showdown")) {
+    return;
+  }
   settleBetsToPot(gameState);
   const activePlayers = getActivePlayers(gameState);
   const scores = activePlayers.map((player) => ({
@@ -622,11 +678,18 @@ const resolveShowdown = (gameState) => {
   gameState.actionLog.push(
     `Showdown: ${winners.map((winner) => winner.nombre).join(", ")} gana.`
   );
+  enforceInvariants(gameState, "showdown-end");
 };
 
 const autoRunout = (gameState) => {
+  if (gameState.handOver || gameState.blocked) {
+    return;
+  }
   while (gameState.fase !== "showdown") {
     dealStreet(gameState);
+    if (gameState.blocked) {
+      return;
+    }
   }
   resolveShowdown(gameState);
 };
@@ -642,6 +705,9 @@ const startNextStreet = (gameState) => {
 };
 
 const completeBettingRound = (gameState) => {
+  if (!enforceInvariants(gameState, "betting-round")) {
+    return;
+  }
   if (hasSingleActivePlayer(gameState)) {
     finalizeWinnerByFold(gameState);
     return;
@@ -820,6 +886,10 @@ const decideAiAction = (gameState, playerIndex) => {
 };
 
 const commitBet = (gameState, player, targetAmount) => {
+  if (targetAmount <= player.apuestaActual) {
+    gameState.error = "La apuesta debe superar la apuesta actual del jugador.";
+    return false;
+  }
   const toPut = targetAmount - player.apuestaActual;
   const amount = Math.min(toPut, player.stack);
   player.stack -= amount;
@@ -841,6 +911,7 @@ const commitBet = (gameState, player, targetAmount) => {
       (id) => id !== player.id
     );
   }
+  return enforceInvariants(gameState, "bet");
 };
 
 const handleAction = (action, amount = 0) => {
@@ -877,7 +948,9 @@ const handleAction = (action, amount = 0) => {
       gameState.error = "No hay apuesta para igualar.";
       return;
     }
-    commitBet(gameState, player, gameState.currentBet);
+    if (!commitBet(gameState, player, gameState.currentBet)) {
+      return;
+    }
     logAction(gameState, `${player.nombre} iguala ${gameState.currentBet}.`);
   } else if (action === ACTIONS.BET) {
     if (gameState.currentBet > 0) {
@@ -888,7 +961,9 @@ const handleAction = (action, amount = 0) => {
       gameState.error = `La apuesta mínima es ${gameState.minRaise}.`;
       return;
     }
-    commitBet(gameState, player, amount);
+    if (!commitBet(gameState, player, amount)) {
+      return;
+    }
     logAction(gameState, `${player.nombre} apuesta ${amount}.`);
   } else if (action === ACTIONS.RAISE) {
     if (gameState.currentBet === 0) {
@@ -900,14 +975,20 @@ const handleAction = (action, amount = 0) => {
       gameState.error = `La subida mínima es a ${minTotal}.`;
       return;
     }
-    commitBet(gameState, player, amount);
+    if (!commitBet(gameState, player, amount)) {
+      return;
+    }
     logAction(gameState, `${player.nombre} sube a ${amount}.`);
   } else if (action === ACTIONS.ALL_IN) {
-    commitBet(gameState, player, player.apuestaActual + player.stack);
+    if (!commitBet(gameState, player, player.apuestaActual + player.stack)) {
+      return;
+    }
     logAction(gameState, `${player.nombre} va all-in.`);
   }
 
-  updateUniqueness(gameState);
+  if (!enforceInvariants(gameState, "action")) {
+    return;
+  }
   if (gameState.blocked) {
     return;
   }
