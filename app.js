@@ -1152,51 +1152,83 @@ const renderConfigView = () => {
 const shouldRevealAI = (gameState) =>
   gameState.handOver || allActiveAllIn(gameState);
 
-const createCardList = (cards, totalSlots = cards.length) => {
+const createCardList = (cards, totalSlots = cards.length, hideCards = false) => {
   const list = document.createElement("div");
   list.className = "card-list";
   for (let i = 0; i < totalSlots; i += 1) {
     const card = document.createElement("span");
     card.className = "card";
-    card.textContent = cards[i] ? getCardLabel(cards[i]) : "🂠";
+    if (cards[i]) {
+      card.textContent = hideCards ? "🂠" : getCardLabel(cards[i]);
+      if (hideCards) {
+        card.classList.add("hidden");
+      }
+    } else {
+      card.textContent = "—";
+    }
     list.appendChild(card);
   }
   return list;
 };
 
-const createPlayerList = (gameState) => {
-  const list = document.createElement("div");
-  list.className = "player-list";
-  const revealAI = shouldRevealAI(gameState);
+const createSeat = (player, isTurn, revealCards, isHero) => {
+  const seat = document.createElement("div");
+  seat.className = "seat";
+  if (isTurn) {
+    seat.classList.add("turn");
+  }
+  if (player.estado === "foldeado") {
+    seat.classList.add("folded");
+  }
+  if (isHero) {
+    seat.classList.add("hero-seat");
+  }
 
-  gameState.players.forEach((player, index) => {
-    const item = document.createElement("div");
-    item.className = "player-item";
-    if (index === gameState.turnoIndex) {
-      item.classList.add("active-turn");
-    }
-    item.innerHTML = `
-      <div class="player-name">${player.nombre}</div>
-      <div class="player-meta">Estilo: ${player.estilo}</div>
-      <div class="player-meta">Stack: ${player.stack}</div>
-      <div class="player-meta">Apuesta: ${player.apuestaActual}</div>
-      <div class="player-meta">Estado: ${player.estado}</div>
-    `;
-    if (!player.esHumano && revealAI) {
-      item.appendChild(createCardList(player.hand, 2));
-    }
-    list.appendChild(item);
-  });
+  const header = document.createElement("div");
+  header.className = "seat-header";
 
-  return list;
+  const name = document.createElement("div");
+  name.className = "seat-name";
+  name.textContent = player.nombre;
+
+  const badges = document.createElement("div");
+  badges.className = "seat-badges";
+  if (player.estado === "all-in") {
+    const badge = document.createElement("span");
+    badge.className = "badge all-in";
+    badge.textContent = "All-in";
+    badges.appendChild(badge);
+  }
+  if (isTurn) {
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = "Turno";
+    badges.appendChild(badge);
+  }
+
+  header.append(name, badges);
+
+  const meta = document.createElement("div");
+  meta.className = "seat-meta";
+  meta.innerHTML = `
+    <div>Stack: ${player.stack}</div>
+    <div>Apuesta: ${player.apuestaActual}</div>
+    <div>Estado: ${player.estado}</div>
+  `;
+
+  const cardList = createCardList(
+    player.hand,
+    2,
+    !revealCards && !player.esHumano
+  );
+
+  seat.append(header, meta, cardList);
+  return seat;
 };
 
 const renderActions = (gameState, humanPlayer) => {
   const container = document.createElement("div");
   container.className = "action-bar";
-
-  const actionRow = document.createElement("div");
-  actionRow.className = "action-row";
 
   const amountInput = document.createElement("input");
   amountInput.type = "number";
@@ -1205,6 +1237,20 @@ const renderActions = (gameState, humanPlayer) => {
     ? gameState.currentBet + gameState.minRaise
     : gameState.minRaise;
   amountInput.className = "bet-input";
+
+  const amountMeta = document.createElement("div");
+  amountMeta.className = "amount-meta";
+  amountMeta.innerHTML = `
+    <span>Cantidad: ${amountInput.value}</span>
+    <span>Máximo: ${humanPlayer.stack}</span>
+  `;
+
+  amountInput.addEventListener("input", () => {
+    amountMeta.querySelector("span").textContent = `Cantidad: ${amountInput.value}`;
+  });
+
+  const actionRow = document.createElement("div");
+  actionRow.className = "action-row";
 
   const makeButton = (label, handler, variant = "") => {
     const button = document.createElement("button");
@@ -1270,7 +1316,11 @@ const renderActions = (gameState, humanPlayer) => {
     actionRow.appendChild(button);
   });
 
-  container.append(amountInput, actionRow);
+  const amountRow = document.createElement("div");
+  amountRow.className = "amount-row";
+  amountRow.append(amountInput, amountMeta);
+
+  container.append(amountRow, actionRow);
   return container;
 };
 
@@ -1278,82 +1328,16 @@ const renderTableView = () => {
   app.innerHTML = "";
 
   const container = document.createElement("section");
-  container.className = "view table-view";
+  container.className = "view table-view table-screen";
+
+  const topbar = document.createElement("div");
+  topbar.className = "table-topbar";
+
+  const topRow = document.createElement("div");
+  topRow.className = "top-row";
 
   const title = document.createElement("h1");
   title.textContent = "Mesa creada";
-
-  const info = document.createElement("div");
-  info.className = "table-info";
-  info.innerHTML = `
-    <div>Fase: <strong>${state.gameState?.fase ?? "-"}</strong></div>
-    <div>Bote: <strong>${state.gameState?.bote ?? 0}</strong></div>
-    <div>Apuesta actual: <strong>${state.gameState?.currentBet ?? 0}</strong></div>
-  `;
-
-  const communitySection = document.createElement("div");
-  communitySection.className = "section";
-  const communityTitle = document.createElement("h2");
-  communityTitle.textContent = "Comunitarias";
-  communitySection.append(communityTitle);
-  if (state.gameState) {
-    communitySection.appendChild(
-      createCardList(state.gameState.comunitarias, 5)
-    );
-  }
-
-  const humanPlayer = state.gameState?.players.find(
-    (player) => player.esHumano
-  );
-  const handSection = document.createElement("div");
-  handSection.className = "section";
-  const handTitle = document.createElement("h2");
-  handTitle.textContent = "Tu mano";
-  handSection.appendChild(handTitle);
-  if (humanPlayer) {
-    handSection.appendChild(createCardList(humanPlayer.hand, 2));
-  }
-
-  const playersSection = document.createElement("div");
-  playersSection.className = "section";
-  const playersTitle = document.createElement("h2");
-  playersTitle.textContent = "Jugadores";
-  playersSection.append(playersTitle);
-  if (state.gameState) {
-    playersSection.appendChild(createPlayerList(state.gameState));
-  }
-
-  const errorMessage = document.createElement("div");
-  errorMessage.className = "error-message";
-  errorMessage.textContent =
-    state.gameState?.error || "Sin errores en el reparto.";
-
-  const logSection = document.createElement("details");
-  logSection.className = "action-log";
-  logSection.open = false;
-  const logSummary = document.createElement("summary");
-  logSummary.textContent = "Log de acciones";
-  logSection.appendChild(logSummary);
-  const logList = document.createElement("ul");
-  logList.className = "action-log-list";
-  state.gameState?.actionLog.forEach((entry) => {
-    const item = document.createElement("li");
-    item.textContent = entry;
-    logList.appendChild(item);
-  });
-  logSection.appendChild(logList);
-
-  const resultMessage = document.createElement("div");
-  resultMessage.className = "result-message";
-  if (state.gameState?.handOver) {
-    const winners = state.gameState.players.filter((player) =>
-      state.gameState.winnerIds.includes(player.id)
-    );
-    const winnerNames = winners.map((player) => player.nombre).join(", ");
-    resultMessage.textContent = `Ganador: ${winnerNames}`;
-  } else {
-    resultMessage.textContent = "La mano está en curso.";
-  }
 
   const buttonRow = document.createElement("div");
   buttonRow.className = "button-row";
@@ -1376,18 +1360,95 @@ const renderTableView = () => {
   });
 
   buttonRow.append(newHandButton, resetButton);
+  topRow.append(title, buttonRow);
 
-  container.append(
-    title,
-    info,
-    communitySection,
-    handSection,
-    playersSection,
-    errorMessage,
-    logSection,
-    resultMessage,
-    buttonRow
+  const metaRow = document.createElement("div");
+  metaRow.className = "table-meta";
+  metaRow.innerHTML = `
+    <span>Fase: <strong>${state.gameState?.fase ?? "-"}</strong></span>
+    <span>Bote: <strong>${state.gameState?.bote ?? 0}</strong></span>
+    <span>Apuesta actual: <strong>${state.gameState?.currentBet ?? 0}</strong></span>
+  `;
+
+  const errorMessage = document.createElement("div");
+  errorMessage.className = "error-message";
+  errorMessage.textContent =
+    state.gameState?.error || "Sin errores en el reparto.";
+
+  topbar.append(topRow, metaRow, errorMessage);
+
+  const pokerTable = document.createElement("div");
+  pokerTable.className = "poker-table";
+
+  const community = document.createElement("div");
+  community.className = "community";
+  const communityTitle = document.createElement("h2");
+  communityTitle.textContent = "Comunitarias";
+  const communityCards = state.gameState
+    ? createCardList(state.gameState.comunitarias, 5)
+    : createCardList([], 5);
+  const pot = document.createElement("div");
+  pot.className = "pot";
+  pot.textContent = `Bote total: ${state.gameState?.bote ?? 0}`;
+  community.append(communityTitle, communityCards, pot);
+
+  const seats = document.createElement("div");
+  seats.className = "seats";
+
+  const humanPlayer = state.gameState?.players.find(
+    (player) => player.esHumano
   );
+  const revealAI = state.gameState ? shouldRevealAI(state.gameState) : false;
+
+  state.gameState?.players.forEach((player, index) => {
+    const seat = createSeat(
+      player,
+      index === state.gameState.turnoIndex,
+      revealAI || player.esHumano,
+      player.esHumano
+    );
+    seats.appendChild(seat);
+  });
+
+  pokerTable.append(community, seats);
+
+  const resultMessage = document.createElement("div");
+  resultMessage.className = "result-message";
+  if (state.gameState?.handOver) {
+    const winners = state.gameState.players.filter((player) =>
+      state.gameState.winnerIds.includes(player.id)
+    );
+    const winnerNames = winners.map((player) => player.nombre).join(", ");
+    resultMessage.textContent = `Ganador: ${winnerNames}`;
+  } else {
+    resultMessage.textContent = "La mano está en curso.";
+  }
+
+  const logToggle = document.createElement("button");
+  logToggle.type = "button";
+  logToggle.className = "log-toggle";
+  logToggle.textContent = "Mostrar log";
+
+  const logPanel = document.createElement("div");
+  logPanel.className = "log-panel";
+  const logTitle = document.createElement("strong");
+  logTitle.textContent = "Log de acciones";
+  const logList = document.createElement("ul");
+  state.gameState?.actionLog.forEach((entry) => {
+    const item = document.createElement("li");
+    item.textContent = entry;
+    logList.appendChild(item);
+  });
+  logPanel.append(logTitle, logList);
+
+  logToggle.addEventListener("click", () => {
+    const isOpen = logPanel.classList.toggle("open");
+    logToggle.textContent = isOpen ? "Ocultar log" : "Mostrar log";
+  });
+
+  topbar.append(logToggle);
+
+  container.append(topbar, pokerTable, resultMessage, logPanel);
 
   if (state.gameState && humanPlayer) {
     container.appendChild(renderActions(state.gameState, humanPlayer));

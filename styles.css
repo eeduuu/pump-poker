@@ -15,10 +15,17 @@
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
   background: radial-gradient(circle at top, #1c2c22, #0c0f0d 60%);
   display: flex;
   flex-direction: column;
-  padding-bottom: 7rem;
+}
+
+.app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 
 .site-header {
@@ -142,14 +149,6 @@ button.secondary {
   margin-bottom: 0.5rem;
 }
 
-.table-info {
-  display: grid;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
-  font-size: 0.95rem;
-  color: #d7e6dd;
-}
-
 .section {
   margin-bottom: 1.5rem;
 }
@@ -164,69 +163,142 @@ button.secondary {
   min-width: 48px;
   padding: 0.6rem 0.7rem;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
+  background: #f5f2e8;
   border: 1px solid rgba(255, 255, 255, 0.12);
   text-align: center;
   font-weight: 600;
+  color: #1b1b1b;
 }
 
-.player-list {
+.card.hidden {
+  background: linear-gradient(135deg, #2e7d57, #1b3b2b);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.table-screen {
+  width: 100%;
+  max-width: 1200px;
   display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 1rem;
+  height: 100%;
+}
+
+.table-topbar {
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
 }
 
-.player-item {
-  padding: 0.75rem 0.9rem;
-  border-radius: 12px;
+.table-topbar .top-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.table-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+  color: #d7e6dd;
+}
+
+.table-meta span {
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
   background: rgba(8, 12, 10, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.player-item.active-turn {
+.poker-table {
+  flex: 1;
+  background: radial-gradient(circle at center, #1a4b36, #0c1c14 70%);
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 1rem;
+  display: grid;
+  gap: 1rem;
+  align-content: center;
+  position: relative;
+  min-height: 320px;
+}
+
+.community {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+}
+
+.community .pot {
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.9rem;
+}
+
+.seats {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.seat {
+  padding: 0.75rem;
+  border-radius: 16px;
+  background: rgba(8, 12, 10, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.seat.turn {
   border-color: rgba(100, 208, 146, 0.7);
   box-shadow: 0 0 0 2px rgba(100, 208, 146, 0.2);
 }
 
-.player-name {
-  font-weight: 600;
-  margin-bottom: 0.25rem;
+.seat.folded {
+  opacity: 0.5;
 }
 
-.player-meta {
-  font-size: 0.9rem;
+.seat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.seat-name {
+  font-weight: 600;
+}
+
+.seat-badges {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.badge.all-in {
+  background: rgba(199, 75, 75, 0.4);
+  border: 1px solid rgba(199, 75, 75, 0.6);
+}
+
+.seat-meta {
+  font-size: 0.85rem;
   color: #c8d7cf;
 }
 
-.result-message {
-  margin-top: 1rem;
-  padding: 0.75rem 1rem;
-  border-radius: 10px;
-  background: rgba(46, 125, 87, 0.2);
-  border: 1px solid rgba(46, 125, 87, 0.4);
-  color: #dff5e8;
-  font-size: 0.95rem;
-}
-
-.action-log {
-  margin-top: 1rem;
-  padding: 0.75rem 1rem;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.action-log summary {
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.action-log-list {
-  margin-top: 0.75rem;
-  padding-left: 1.25rem;
-  display: grid;
-  gap: 0.35rem;
-  font-size: 0.9rem;
-  color: #cddcd4;
+.hero-seat {
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .action-bar {
@@ -234,7 +306,7 @@ button.secondary {
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 1rem;
+  padding: 0.9rem 1rem 1.2rem;
   background: rgba(10, 13, 11, 0.98);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: grid;
@@ -242,9 +314,21 @@ button.secondary {
   z-index: 10;
 }
 
+.action-bar .amount-row {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.amount-row .amount-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: #cddcd4;
+}
+
 .action-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   gap: 0.5rem;
 }
 
@@ -256,6 +340,54 @@ button.secondary {
   background: rgba(255, 255, 255, 0.08);
   color: #f5f5f5;
   font-size: 1rem;
+}
+
+.log-panel {
+  position: fixed;
+  right: 1rem;
+  bottom: 6.5rem;
+  width: min(320px, 90vw);
+  max-height: 50vh;
+  background: rgba(8, 12, 10, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 0.75rem;
+  display: none;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 12;
+}
+
+.log-panel.open {
+  display: flex;
+}
+
+.log-panel ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow-y: auto;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: #cddcd4;
+}
+
+.log-toggle {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #e5f2eb;
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+}
+
+.result-message {
+  margin-top: 0.5rem;
+}
+
+.action-log {
+  display: none;
 }
 
 @media (min-width: 768px) {
@@ -275,10 +407,55 @@ button.secondary {
     flex: 1;
   }
 
+  .table-screen {
+    grid-template-rows: auto 1fr auto;
+  }
+
+  .table-topbar {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .poker-table {
+    grid-template-columns: 1fr 1.2fr 1fr;
+    grid-template-rows: auto 1fr auto;
+    align-items: center;
+  }
+
+  .community {
+    grid-column: 2;
+  }
+
+  .seats {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .action-bar {
     position: static;
     border-top: none;
     padding: 0;
     background: transparent;
+  }
+
+  .log-panel {
+    position: absolute;
+    right: 2rem;
+    bottom: 6rem;
+  }
+}
+
+@media (max-width: 480px) {
+  #app {
+    padding: 1rem;
+  }
+
+  .poker-table {
+    min-height: 260px;
+  }
+
+  .seats {
+    grid-template-columns: 1fr;
   }
 }
