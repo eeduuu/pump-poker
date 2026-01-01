@@ -1,8 +1,7 @@
 const state = {
   currentView: "config",
   gameConfig: {
-    jugadoresTotales: 6,
-    numeroIA: 3,
+    numeroIA: 5,
     stackInicial: 1500,
     smallBlind: 10,
     bigBlind: 20,
@@ -53,14 +52,10 @@ const TOURNAMENT_BLIND_LEVELS = [
 const app = document.getElementById("app");
 
 const numericFields = {
-  jugadoresTotales: {
-    label: "Jugadores totales (2-9)",
-    min: 2,
-    max: 9,
-  },
   numeroIA: {
-    label: "Número de IA",
-    min: 0,
+    label: "Número de jugadores IA (1-8)",
+    min: 1,
+    max: 8,
   },
   stackInicial: {
     label: "Stack inicial",
@@ -180,20 +175,19 @@ const getCardLabel = (card) => `${card.rank}${card.suit}`;
 
 const createPlayers = (config) => {
   const players = [];
-  const total = config.jugadoresTotales;
-  const humanCount = total - config.numeroIA;
+  const total = 1 + config.numeroIA; // 1 humano + X IA
 
   for (let i = 0; i < total; i += 1) {
-    const isHuman = i < humanCount;
+    const isHuman = i === 0; // Solo el primer jugador es humano
     const aiPersonality = isHuman
       ? null
-      : AI_PERSONALITIES[(i - humanCount) % AI_PERSONALITIES.length];
+      : AI_PERSONALITIES[(i - 1) % AI_PERSONALITIES.length];
     const displayStyle =
       aiPersonality === "estandar" ? "estándar" : aiPersonality;
 
     players.push({
       id: i + 1,
-      nombre: isHuman ? `Jugador ${i + 1}` : `IA ${i + 1 - humanCount}`,
+      nombre: isHuman ? `Tú` : `IA ${i}`,
       esHumano: isHuman,
       aiLevel: isHuman ? null : DEFAULT_AI_LEVEL,
       aiPersonality,
@@ -1468,12 +1462,8 @@ const renderConfigView = () => {
       return false;
     });
 
-    if (!errorText) {
-      const maxIA = nextConfig.jugadoresTotales - 1;
-      if (nextConfig.numeroIA > maxIA) {
-        errorText =
-          "El número de IA debe ser menor o igual a jugadores totales menos uno.";
-      }
+    if (!errorText && nextConfig.numeroIA < 1) {
+      errorText = "Debe haber al menos 1 jugador IA.";
     }
 
     if (!errorText && nextConfig.smallBlind >= nextConfig.bigBlind) {
