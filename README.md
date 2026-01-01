@@ -6,9 +6,6 @@ Proyecto base para un juego de poker en el navegador con JavaScript puro.
 
 1. Clona o descarga este repositorio.
 2. Abre `index.html` en tu navegador.
-3. Asegúrate de colocar las imágenes indicadas dentro de la carpeta `assets/`:
-   - `Pump Poker.png`
-   - `Pump Poker - fondo negro.png`
 
 ## Qué incluye este primer paso
 
