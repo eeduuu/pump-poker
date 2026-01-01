@@ -19,6 +19,10 @@ const ACTIONS = {
   ALL_IN: "all-in",
 };
 
+// Ajusta este nivel global si no hay selector en la UI.
+const DEFAULT_AI_LEVEL = "normal";
+const AI_PERSONALITIES = ["conservador", "estandar", "agresivo"];
+
 const app = document.getElementById("app");
 
 const numericFields = {
@@ -149,14 +153,22 @@ const createPlayers = (config) => {
   const players = [];
   const total = config.jugadoresTotales;
   const humanCount = total - config.numeroIA;
-  const aiStyles = ["conservador", "estándar", "agresivo"];
 
   for (let i = 0; i < total; i += 1) {
+    const isHuman = i < humanCount;
+    const aiPersonality = isHuman
+      ? null
+      : AI_PERSONALITIES[(i - humanCount) % AI_PERSONALITIES.length];
+    const displayStyle =
+      aiPersonality === "estandar" ? "estándar" : aiPersonality;
+
     players.push({
       id: i + 1,
-      nombre: i < humanCount ? `Jugador ${i + 1}` : `IA ${i + 1 - humanCount}`,
-      esHumano: i < humanCount,
-      estilo: i < humanCount ? "humano" : aiStyles[(i - humanCount) % aiStyles.length],
+      nombre: isHuman ? `Jugador ${i + 1}` : `IA ${i + 1 - humanCount}`,
+      esHumano: isHuman,
+      aiLevel: isHuman ? null : DEFAULT_AI_LEVEL,
+      aiPersonality,
+      estilo: isHuman ? "humano" : displayStyle,
       stack: config.stackInicial,
       hand: [],
       apuestaActual: 0,
@@ -467,39 +479,121 @@ const evaluateSevenCards = (cards) => {
   );
 };
 
-const evaluateHandStrength = (hand, comunitarias, fase) => {
-  if (fase === "preflop") {
-    const [first, second] = hand;
-    if (!first || !second) {
-      return 0;
-    }
-    const firstValue = rankValues[first.rank];
-    const secondValue = rankValues[second.rank];
-    const highCard = Math.max(firstValue, secondValue);
-    const lowCard = Math.min(firstValue, secondValue);
-    const isPair = firstValue === secondValue;
-    const suited = first.suit === second.suit;
+const normalizeStrength = (value) => Math.min(Math.max(value, 0), 1);
 
-    let score = (highCard + lowCard) / 28;
-    if (isPair) {
-      score += 0.4;
+const getSortedRanks = (cards) =>
+  cards
+    .map((card) => rankValues[card.rank])
+    .filter(Boolean)
+    .sort((a, b) => b - a);
+
+const hasFlushDraw = (hand, comunitarias) => {
+  const suitsCount = [...hand, ...comunitarias].reduce((acc, card) => {
+    acc[card.suit] = (acc[card.suit] || 0) + 1;
+    return acc;
+  }, {});
+  return Object.values(suitsCount).some((count) => count === 4);
+};
+
+const hasOpenEndedStraightDraw = (hand, comunitarias) => {
+  const values = [...new Set(getSortedRanks([...hand, ...comunitarias]))];
+  if (values.length < 4) {
+    return false;
+  }
+  for (let i = 0; i <= values.length - 4; i += 1) {
+    const slice = values.slice(i, i + 4);
+    if (slice[0] - slice[3] === 3) {
+      const high = slice[0];
+      const low = slice[3];
+      const needsHigh = high + 1 <= 14;
+      const needsLow = low - 1 >= 2;
+      if (needsHigh && needsLow) {
+        return true;
+      }
     }
-    if (suited) {
-      score += 0.1;
-    }
-    return Math.min(score, 1);
+  }
+  return false;
+};
+
+const getPreflopStrength = (hand) => {
+  const [first, second] = hand;
+  if (!first || !second) {
+    return 0;
+  }
+  const firstValue = rankValues[first.rank];
+  const secondValue = rankValues[second.rank];
+  const high = Math.max(firstValue, secondValue);
+  const low = Math.min(firstValue, secondValue);
+  const isPair = high === low;
+  const suited = first.suit === second.suit;
+  const isBroadway = high >= 11 && low >= 10;
+  const isConnector = high - low === 1;
+  const isOneGapper = high - low === 2;
+
+  let score = (high + low) / 30;
+  if (isPair) {
+    score += 0.35 + high / 40;
+  }
+  if (isBroadway) {
+    score += 0.15;
+  }
+  if (suited) {
+    score += 0.08;
+  }
+  if (isConnector) {
+    score += 0.06;
+  } else if (isOneGapper) {
+    score += 0.03;
   }
 
+  return normalizeStrength(score);
+};
+
+const getPostflopStrength = (hand, comunitarias) => {
   const available = [...hand, ...comunitarias].filter(Boolean);
   if (available.length < 5) {
-    return 0.3;
+    return 0.25;
   }
   const best = evaluateSevenCards(available);
   const rankScore = best.rank / 8;
   const kickerScore =
-    best.tiebreak.reduce((sum, value, index) => sum + value / (14 * (index + 1)), 0) /
-    best.tiebreak.length;
-  return Math.min(rankScore + kickerScore * 0.2, 1);
+    best.tiebreak.reduce(
+      (sum, value, index) => sum + value / (14 * (index + 1)),
+      0
+    ) / best.tiebreak.length;
+  return normalizeStrength(rankScore + kickerScore * 0.2);
+};
+
+const getAiFeatures = (gameState, player) => {
+  const potSize = Math.max(getPotSize(gameState), gameState.ciegas.bigBlind);
+  const toCall = Math.max(gameState.currentBet - player.apuestaActual, 0);
+  const potOdds = toCall > 0 ? toCall / (potSize + toCall) : 0;
+  const stackRemaining = player.stack;
+  const stackToPotRatio = potSize > 0 ? stackRemaining / potSize : 1;
+
+  const preflopStrength = getPreflopStrength(player.hand);
+  const postflopStrength = getPostflopStrength(
+    player.hand,
+    gameState.comunitarias
+  );
+  const flushDraw = hasFlushDraw(player.hand, gameState.comunitarias);
+  const straightDraw = hasOpenEndedStraightDraw(
+    player.hand,
+    gameState.comunitarias
+  );
+
+  return {
+    potSize,
+    toCall,
+    potOdds,
+    stackRemaining,
+    stackToPotRatio,
+    preflopStrength,
+    postflopStrength,
+    flushDraw,
+    straightDraw,
+    fase: gameState.fase,
+  };
 };
 
 const resolveShowdown = (gameState) => {
@@ -568,52 +662,161 @@ const completeBettingRound = (gameState) => {
   startNextStreet(gameState);
 };
 
-const decideAIAction = (gameState, player) => {
-  const strength = evaluateHandStrength(
-    player.hand,
-    gameState.comunitarias,
-    gameState.fase
+const getNoiseChance = (level) => {
+  if (level === "facil") {
+    return 0.25;
+  }
+  if (level === "normal") {
+    return 0.08;
+  }
+  return 0.03;
+};
+
+const applyNoise = (actionPlan, level, alternatives) => {
+  const roll = getRandomInt(100) / 100;
+  if (roll < getNoiseChance(level) && alternatives.length > 0) {
+    return alternatives[getRandomInt(alternatives.length)];
+  }
+  return actionPlan;
+};
+
+const getBaseThresholds = (level) => {
+  if (level === "facil") {
+    return { fold: 0.45, raise: 0.7, bluff: 0.05 };
+  }
+  if (level === "normal") {
+    return { fold: 0.3, raise: 0.6, bluff: 0.12 };
+  }
+  return { fold: 0.2, raise: 0.52, bluff: 0.18 };
+};
+
+const applyPersonalityBias = (thresholds, personality) => {
+  if (personality === "conservador") {
+    return {
+      fold: thresholds.fold + 0.12,
+      raise: thresholds.raise + 0.1,
+      bluff: thresholds.bluff * 0.5,
+    };
+  }
+  if (personality === "agresivo") {
+    return {
+      fold: thresholds.fold - 0.08,
+      raise: thresholds.raise - 0.08,
+      bluff: thresholds.bluff * 1.6,
+    };
+  }
+  return thresholds;
+};
+
+const getBetSizing = (features, personality, level, gameState, player) => {
+  const basePot = features.potSize;
+  const aggressive = personality === "agresivo";
+  const baseMultiplier = aggressive ? 0.75 : 0.5;
+  const levelBoost = level === "dificil" ? 0.1 : 0;
+  const target = Math.max(
+    gameState.minRaise,
+    Math.floor(basePot * (baseMultiplier + levelBoost))
   );
-  const callAmount = gameState.currentBet - player.apuestaActual;
-  const potSize = Math.max(getPotSize(gameState), gameState.ciegas.bigBlind);
-  const styleThresholds = {
-    conservador: { fold: 0.4, raise: 0.75, allIn: 0.65 },
-    estándar: { fold: 0.25, raise: 0.65, allIn: 0.55 },
-    agresivo: { fold: 0.15, raise: 0.55, allIn: 0.45 },
-  };
-  const thresholds = styleThresholds[player.estilo] || styleThresholds.estándar;
+  return Math.min(player.apuestaActual + player.stack, target);
+};
 
-  if (callAmount <= 0) {
-    if (strength >= thresholds.raise && player.stack >= gameState.minRaise) {
-      const target = Math.min(
-        player.apuestaActual + player.stack,
-        gameState.minRaise + Math.floor(potSize * 0.4)
-      );
-      return { action: ACTIONS.BET, amount: Math.max(target, gameState.minRaise) };
+const getRaiseSizing = (features, personality, level, gameState, player) => {
+  const raiseFactor = personality === "agresivo" ? 3 : 2.5;
+  const levelBoost = level === "dificil" ? 0.3 : 0;
+  const target = Math.floor(
+    gameState.currentBet + gameState.minRaise * (raiseFactor + levelBoost)
+  );
+  return Math.min(player.apuestaActual + player.stack, target);
+};
+
+const decideAiAction = (gameState, playerIndex) => {
+  const player = gameState.players[playerIndex];
+  const features = getAiFeatures(gameState, player);
+  const level = player.aiLevel || DEFAULT_AI_LEVEL;
+  const personality = player.aiPersonality || "estandar";
+  const thresholds = applyPersonalityBias(
+    getBaseThresholds(level),
+    personality
+  );
+
+  const isPreflop = features.fase === "preflop";
+  const strength = isPreflop ? features.preflopStrength : features.postflopStrength;
+  const hasDraw = features.flushDraw || features.straightDraw;
+  const callPressure = features.toCall / Math.max(features.potSize, 1);
+  const sprLow = features.stackToPotRatio < 2.5;
+
+  const alternatives = [];
+  let plan = { type: ACTIONS.CHECK };
+
+  if (features.toCall > 0) {
+    alternatives.push({ type: ACTIONS.FOLD });
+    alternatives.push({ type: ACTIONS.CALL });
+  } else {
+    alternatives.push({ type: ACTIONS.CHECK });
+    alternatives.push({ type: ACTIONS.BET, amount: getBetSizing(features, personality, level, gameState, player) });
+  }
+
+  if (features.toCall <= 0) {
+    if (strength >= thresholds.raise || (hasDraw && personality === "agresivo")) {
+      plan = {
+        type: ACTIONS.BET,
+        amount: getBetSizing(features, personality, level, gameState, player),
+      };
+    } else {
+      plan = { type: ACTIONS.CHECK };
     }
-    return { action: ACTIONS.CHECK };
-  }
-
-  if (callAmount >= player.stack) {
-    if (strength >= thresholds.allIn) {
-      return { action: ACTIONS.ALL_IN };
+  } else {
+    if (strength < thresholds.fold && callPressure > 0.35 && !hasDraw) {
+      plan = { type: ACTIONS.FOLD };
+    } else if (
+      strength >= thresholds.raise ||
+      (hasDraw && strength >= thresholds.fold && personality === "agresivo")
+    ) {
+      plan = {
+        type: ACTIONS.RAISE,
+        amount: getRaiseSizing(features, personality, level, gameState, player),
+      };
+    } else if (strength >= features.potOdds || hasDraw) {
+      plan = { type: ACTIONS.CALL };
+    } else {
+      plan = { type: ACTIONS.FOLD };
     }
-    return { action: ACTIONS.FOLD };
   }
 
-  if (strength < thresholds.fold && callAmount > potSize * 0.35) {
-    return { action: ACTIONS.FOLD };
+  if (sprLow && strength > 0.7) {
+    plan = { type: ACTIONS.ALL_IN };
   }
 
-  if (strength >= thresholds.raise && player.stack > callAmount + gameState.minRaise) {
-    const target = Math.min(
-      player.apuestaActual + player.stack,
-      gameState.currentBet + gameState.minRaise + Math.floor(potSize * 0.3)
+  if (
+    level === "dificil" &&
+    personality === "agresivo" &&
+    !isPreflop &&
+    strength < thresholds.fold &&
+    features.toCall === 0 &&
+    getRandomInt(100) / 100 < thresholds.bluff
+  ) {
+    plan = {
+      type: ACTIONS.BET,
+      amount: getBetSizing(features, personality, level, gameState, player),
+    };
+  }
+
+  plan = applyNoise(plan, level, alternatives);
+
+  if ((plan.type === ACTIONS.BET || plan.type === ACTIONS.RAISE) && !plan.amount) {
+    plan.amount = getBetSizing(features, personality, level, gameState, player);
+  }
+
+  if (plan.amount) {
+    plan.amount = Math.min(
+      plan.amount,
+      player.apuestaActual + player.stack
     );
-    return { action: ACTIONS.RAISE, amount: Math.max(target, gameState.currentBet) };
+    plan.amount = Math.max(plan.amount, player.apuestaActual);
+    plan.amount = Math.round(plan.amount);
   }
 
-  return { action: ACTIONS.CALL };
+  return plan;
 };
 
 const commitBet = (gameState, player, targetAmount) => {
@@ -723,8 +926,8 @@ const autoActionForPlayer = () => {
   if (!player || player.esHumano || player.estado !== "activo") {
     return false;
   }
-  const decision = decideAIAction(gameState, player);
-  handleAction(decision.action, decision.amount ?? 0);
+  const decision = decideAiAction(gameState, gameState.turnoIndex);
+  handleAction(decision.type, decision.amount ?? 0);
   return true;
 };
 
