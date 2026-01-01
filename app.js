@@ -1226,6 +1226,37 @@ const createSeat = (player, isTurn, revealCards, isHero) => {
   return seat;
 };
 
+const getPotTotalForUi = (gameState) =>
+  gameState.bote +
+  gameState.players.reduce((sum, player) => sum + player.apuestaActual, 0);
+
+const getStatusMessage = (gameState) => {
+  if (!gameState) {
+    return "Sin partida activa.";
+  }
+  if (gameState.handOver) {
+    const winners = gameState.players.filter((player) =>
+      gameState.winnerIds.includes(player.id)
+    );
+    const winnerNames = winners.map((player) => player.nombre).join(", ");
+    const lastLog = gameState.actionLog[gameState.actionLog.length - 1] || "";
+    const reason = lastLog.includes("fold")
+      ? "abandono"
+      : lastLog.includes("Showdown")
+      ? "showdown"
+      : "resultado final";
+    return `Ganador: ${winnerNames} (${reason}).`;
+  }
+  const currentPlayer = gameState.players[gameState.turnoIndex];
+  if (currentPlayer?.esHumano) {
+    return "Tu turno";
+  }
+  if (currentPlayer) {
+    return `Turno de ${currentPlayer.nombre}`;
+  }
+  return "Esperando acción";
+};
+
 const renderActions = (gameState, humanPlayer) => {
   const container = document.createElement("div");
   container.className = "action-bar";
@@ -1233,10 +1264,20 @@ const renderActions = (gameState, humanPlayer) => {
   const amountInput = document.createElement("input");
   amountInput.type = "number";
   amountInput.min = gameState.minRaise;
-  amountInput.value = gameState.currentBet
-    ? gameState.currentBet + gameState.minRaise
-    : gameState.minRaise;
+  const maxAmount = humanPlayer.apuestaActual + humanPlayer.stack;
+  const defaultAmount = gameState.currentBet
+    ? Math.min(maxAmount, gameState.currentBet + gameState.minRaise)
+    : Math.min(maxAmount, gameState.minRaise);
+  amountInput.value = defaultAmount;
+  amountInput.max = maxAmount;
   amountInput.className = "bet-input";
+
+  const rangeInput = document.createElement("input");
+  rangeInput.type = "range";
+  rangeInput.min = gameState.minRaise;
+  rangeInput.max = maxAmount;
+  rangeInput.value = defaultAmount;
+  rangeInput.className = "bet-range";
 
   const amountMeta = document.createElement("div");
   amountMeta.className = "amount-meta";
@@ -1245,12 +1286,45 @@ const renderActions = (gameState, humanPlayer) => {
     <span>Máximo: ${humanPlayer.stack}</span>
   `;
 
-  amountInput.addEventListener("input", () => {
-    amountMeta.querySelector("span").textContent = `Cantidad: ${amountInput.value}`;
+  const syncAmount = (value) => {
+    const clamped = Math.max(
+      Number(gameState.minRaise),
+      Math.min(Number(value), maxAmount)
+    );
+    amountInput.value = clamped;
+    rangeInput.value = clamped;
+    amountMeta.querySelector("span").textContent = `Cantidad: ${clamped}`;
+  };
+
+  amountInput.addEventListener("input", (event) => {
+    syncAmount(event.target.value);
+  });
+
+  rangeInput.addEventListener("input", (event) => {
+    syncAmount(event.target.value);
   });
 
   const actionRow = document.createElement("div");
   actionRow.className = "action-row";
+
+  const quickRow = document.createElement("div");
+  quickRow.className = "quick-row";
+
+  const potTotal = getPotTotalForUi(gameState);
+  const quickButtons = [
+    { label: "1/2 bote", value: Math.floor(potTotal * 0.5) },
+    { label: "Bote", value: Math.floor(potTotal) },
+    { label: "All-in", value: maxAmount },
+  ];
+
+  quickButtons.forEach((quick) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary quick-button";
+    button.textContent = quick.label;
+    button.addEventListener("click", () => syncAmount(quick.value));
+    quickRow.appendChild(button);
+  });
 
   const makeButton = (label, handler, variant = "") => {
     const button = document.createElement("button");
@@ -1263,10 +1337,14 @@ const renderActions = (gameState, humanPlayer) => {
     return button;
   };
 
-  const isTurn = gameState.turnoIndex !== -1 &&
+  const isTurn =
+    gameState.turnoIndex !== -1 &&
     gameState.players[gameState.turnoIndex].id === humanPlayer.id;
 
   const disableActions = !isTurn || isHandOver(gameState) || gameState.blocked;
+  const callAmount = gameState.currentBet - humanPlayer.apuestaActual;
+  const disableCheck = callAmount > 0;
+  const disableCall = callAmount <= 0;
 
   const checkButton = makeButton("Check", () => {
     handleAction(ACTIONS.CHECK);
@@ -1316,11 +1394,16 @@ const renderActions = (gameState, humanPlayer) => {
     actionRow.appendChild(button);
   });
 
+  if (!disableActions) {
+    checkButton.disabled = disableCheck;
+    callButton.disabled = disableCall;
+  }
+
   const amountRow = document.createElement("div");
   amountRow.className = "amount-row";
-  amountRow.append(amountInput, amountMeta);
+  amountRow.append(amountInput, rangeInput, amountMeta);
 
-  container.append(amountRow, actionRow);
+  container.append(amountRow, quickRow, actionRow);
   return container;
 };
 
@@ -1370,12 +1453,16 @@ const renderTableView = () => {
     <span>Apuesta actual: <strong>${state.gameState?.currentBet ?? 0}</strong></span>
   `;
 
+  const statusMessage = document.createElement("div");
+  statusMessage.className = "status-message";
+  statusMessage.textContent = getStatusMessage(state.gameState);
+
   const errorMessage = document.createElement("div");
   errorMessage.className = "error-message";
   errorMessage.textContent =
     state.gameState?.error || "Sin errores en el reparto.";
 
-  topbar.append(topRow, metaRow, errorMessage);
+  topbar.append(topRow, metaRow, statusMessage, errorMessage);
 
   const pokerTable = document.createElement("div");
   pokerTable.className = "poker-table";
@@ -1434,9 +1521,15 @@ const renderTableView = () => {
   const logTitle = document.createElement("strong");
   logTitle.textContent = "Log de acciones";
   const logList = document.createElement("ul");
-  state.gameState?.actionLog.forEach((entry) => {
+  const lastIndex = state.gameState?.actionLog.length
+    ? state.gameState.actionLog.length - 1
+    : -1;
+  state.gameState?.actionLog.forEach((entry, index) => {
     const item = document.createElement("li");
     item.textContent = entry;
+    if (index === lastIndex) {
+      item.classList.add("latest");
+    }
     logList.appendChild(item);
   });
   logPanel.append(logTitle, logList);

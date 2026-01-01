@@ -123,6 +123,12 @@ button:hover {
   box-shadow: 0 12px 20px rgba(46, 125, 87, 0.35);
 }
 
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 button.secondary {
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -211,6 +217,15 @@ button.secondary {
   border-radius: 999px;
   background: rgba(8, 12, 10, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.status-message {
+  padding: 0.65rem 0.9rem;
+  border-radius: 12px;
+  background: rgba(46, 125, 87, 0.18);
+  border: 1px solid rgba(46, 125, 87, 0.4);
+  font-weight: 600;
+  font-size: 0.95rem;
 }
 
 .poker-table {
@@ -332,6 +347,12 @@ button.secondary {
   gap: 0.5rem;
 }
 
+.quick-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 0.5rem;
+}
+
 .bet-input {
   width: 100%;
   padding: 0.75rem 0.9rem;
@@ -340,6 +361,22 @@ button.secondary {
   background: rgba(255, 255, 255, 0.08);
   color: #f5f5f5;
   font-size: 1rem;
+}
+
+.bet-range {
+  width: 100%;
+}
+
+.amount-row {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.amount-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: #cddcd4;
 }
 
 .log-panel {
@@ -371,6 +408,11 @@ button.secondary {
   gap: 0.35rem;
   font-size: 0.85rem;
   color: #cddcd4;
+}
+
+.log-panel ul li.latest {
+  color: #f7f5d2;
+  font-weight: 600;
 }
 
 .log-toggle {
@@ -457,5 +499,13 @@ button.secondary {
 
   .seats {
     grid-template-columns: 1fr;
+  }
+
+  .seat {
+    padding: 0.6rem;
+  }
+
+  .status-message {
+    font-size: 0.9rem;
   }
 }
