@@ -2087,7 +2087,6 @@ const renderTableView = () => {
 
   container.append(topbar, pokerTable, resultMessage, logPanel, chatPanel);
 
-  const humanPlayer = state.gameState?.players.find((p) => p.esHumano);
   if (state.gameState && humanPlayer) {
     container.appendChild(renderActions(state.gameState, humanPlayer));
   }
