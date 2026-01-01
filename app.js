@@ -1809,63 +1809,53 @@ const renderActions = (gameState, humanPlayer) => {
     renderTableView();
   };
 
-  const checkButton = makeButton("Check", () => {
-    handleHumanAction(ACTIONS.CHECK);
-  });
+  // Determinar qué botones mostrar según la situación
+  const buttonsToShow = [];
 
-  const callButton = makeButton("Call", () => {
-    handleHumanAction(ACTIONS.CALL);
-  });
+  if (!disableActions) {
+    // Si no hay apuesta que igualar
+    if (callAmount === 0) {
+      // Check / Bet / All-in
+      buttonsToShow.push(
+        makeButton("Check", () => handleHumanAction(ACTIONS.CHECK)),
+        makeButton("Bet", () => handleHumanAction(ACTIONS.BET, Number(amountInput.value)))
+      );
+    } else {
+      // Hay apuesta: Fold / Call / Raise / All-in
+      buttonsToShow.push(
+        makeButton("Fold", () => handleHumanAction(ACTIONS.FOLD), "secondary"),
+        makeButton(`Call ${callAmount}`, () => handleHumanAction(ACTIONS.CALL))
+      );
+      
+      // Solo mostrar Raise si tiene fichas suficientes
+      const minRaiseAmount = gameState.currentBet + gameState.minRaise;
+      if (humanPlayer.stack + humanPlayer.apuestaActual >= minRaiseAmount) {
+        buttonsToShow.push(
+          makeButton("Raise", () => handleHumanAction(ACTIONS.RAISE, Number(amountInput.value)))
+        );
+      }
+    }
+    
+    // All-in siempre disponible si tiene fichas
+    if (humanPlayer.stack > 0) {
+      buttonsToShow.push(
+        makeButton("All-in", () => handleHumanAction(ACTIONS.ALL_IN))
+      );
+    }
+  } else {
+    // Botones deshabilitados (no es tu turno)
+    buttonsToShow.push(
+      makeButton("Fold", () => {}, "secondary"),
+      makeButton("Call", () => {}),
+      makeButton("Raise", () => {})
+    );
+  }
 
-  const betButton = makeButton("Bet", () => {
-    handleHumanAction(ACTIONS.BET, Number(amountInput.value));
-  });
-
-  const raiseButton = makeButton("Raise", () => {
-    handleHumanAction(ACTIONS.RAISE, Number(amountInput.value));
-  });
-
-  const allInButton = makeButton("All-in", () => {
-    handleHumanAction(ACTIONS.ALL_IN);
-  });
-
-  const foldButton = makeButton("Fold", () => {
-    handleHumanAction(ACTIONS.FOLD);
-  }, "secondary");
-
-  [
-    checkButton,
-    callButton,
-    betButton,
-    raiseButton,
-    allInButton,
-    foldButton,
-  ].forEach((button) => {
+  // Añadir botones al actionRow
+  buttonsToShow.forEach((button) => {
     button.disabled = disableActions;
     actionRow.appendChild(button);
   });
-
-  if (!disableActions) {
-    checkButton.disabled = disableCheck;
-    callButton.disabled = disableCall;
-  }
-
-  [
-    checkButton,
-    callButton,
-    betButton,
-    raiseButton,
-    allInButton,
-    foldButton,
-  ].forEach((button) => {
-    button.disabled = disableActions;
-    actionRow.appendChild(button);
-  });
-
-  if (!disableActions) {
-    checkButton.disabled = disableCheck;
-    callButton.disabled = disableCall;
-  }
 
   const amountRow = document.createElement("div");
   amountRow.className = "amount-row";
