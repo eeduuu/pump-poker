@@ -22,6 +22,7 @@ const state = {
     chatMessages: [],
   },
 
+
   gameMode: null,
   gameState: null,
   tournamentTimerId: null,
@@ -159,6 +160,10 @@ const dealInitialHands = (deck, players) => {
       if (player.estado !== "eliminado") {
         player.hand.push(dealCard(deck));
       }
+
+      if (player.estado !== "eliminado") {
+        player.hand.push(dealCard(deck));
+      }
       player.hand.push(dealCard(deck));
     });
   }
@@ -224,6 +229,10 @@ const getActivePlayers = (gameState) =>
   gameState.players.filter(
     (player) => player.estado !== "foldeado" && player.estado !== "eliminado"
   );
+
+
+const getEligiblePlayers = (gameState) =>
+  getActivePlayers(gameState).filter((player) => player.stack > 0);
 
   gameState.players.filter(
     (player) => player.estado !== "foldeado" && player.estado !== "eliminado"
@@ -391,6 +400,24 @@ const postBlind = (player, amount) => {
 
 const getBlindIndexes = (gameState, dealerIndex) => {
   const liveCount = getLivePlayerCount(gameState);
+  let smallBlindIndex = -1;
+  let bigBlindIndex = -1;
+
+  if (liveCount <= 1) {
+    return { smallBlindIndex, bigBlindIndex };
+  }
+
+  if (liveCount === 2) {
+    smallBlindIndex = dealerIndex;
+    bigBlindIndex = getNextLiveIndex(gameState, dealerIndex);
+    return { smallBlindIndex, bigBlindIndex };
+  }
+
+  smallBlindIndex = getNextLiveIndex(gameState, dealerIndex);
+  bigBlindIndex = getNextLiveIndex(gameState, smallBlindIndex);
+
+const getBlindIndexes = (gameState, dealerIndex) => {
+  const liveCount = getLivePlayerCount(gameState);
   if (liveCount <= 1) {
     return { smallBlindIndex: -1, bigBlindIndex: -1 };
   }
@@ -490,6 +517,9 @@ const createGameState = (config) => {
 
       smallBlind: initialBlinds.sb,
       bigBlind: initialBlinds.bb,
+
+      smallBlind: initialBlinds.sb,
+      bigBlind: initialBlinds.bb,
       smallBlind: config.smallBlind,
       bigBlind: config.bigBlind,
     },
@@ -498,6 +528,8 @@ const createGameState = (config) => {
     fase: "preflop",
     deck,
     currentBet: 0,
+
+    minRaise: initialBlinds.bb,
 
     minRaise: initialBlinds.bb,
 
@@ -558,6 +590,7 @@ const createGameState = (config) => {
 
   enforceInvariants(gameState, "init");
   startTournamentTimer(gameState);
+
 
   };
 
@@ -1297,6 +1330,7 @@ const runAutoActions = () => {
   }
 };
 
+
   let guard = 0;
   while (
     gameState.turnoIndex !== -1 &&
@@ -1431,6 +1465,7 @@ const startNewHand = () => {
   stopHumanTurnTimer();
   stopAiDelay();
   syncTurnUi();
+
   state.gameState = createGameState(state.gameConfig);
   runAutoActions();
 };
@@ -1621,6 +1656,7 @@ const createCardList = (cards, totalSlots = cards.length, hideCards = false) => 
       } else {
         card.appendChild(renderCardFace(cards[i]));
       }
+
       card.textContent = hideCards ? "🂠" : getCardLabel(cards[i]);
       if (hideCards) {
         card.classList.add("hidden");
@@ -1780,6 +1816,9 @@ const getStatusMessage = (gameState) => {
 
     const timeLeft = state.ui.humanTimeLeft ?? 30;
     return `Tu turno (${timeLeft}s)`;
+
+    const timeLeft = state.ui.humanTimeLeft ?? 30;
+    return `Tu turno (${timeLeft}s)`;
     return "Tu turno";
   }
   if (currentPlayer) {
@@ -1878,6 +1917,7 @@ const renderActions = (gameState, humanPlayer) => {
     isHandOver(gameState) ||
     gameState.blocked ||
     Boolean(state.ui.overlay);
+
   const disableActions = !isTurn || isHandOver(gameState) || gameState.blocked;
   const callAmount = gameState.currentBet - humanPlayer.apuestaActual;
   const disableCheck = callAmount > 0;
@@ -1920,6 +1960,7 @@ const renderActions = (gameState, humanPlayer) => {
 
   const foldButton = makeButton("Fold", () => {
     handleHumanAction(ACTIONS.FOLD);
+
   const checkButton = makeButton("Check", () => {
     handleAction(ACTIONS.CHECK);
     runAutoActions();
@@ -2021,6 +2062,10 @@ const renderTableView = () => {
     state.ui.chatOpen = false;
     state.ui.chatMessages = [];
 
+    clearAllTimers();
+    state.ui.chatOpen = false;
+    state.ui.chatMessages = [];
+
     stopTournamentTimer();
     state.currentView = "config";
     renderConfigView();
@@ -2052,6 +2097,10 @@ const renderTableView = () => {
     state.gameState?.error ||
     state.gameState?.noticeMessage ||
     "Sin errores en el reparto.";
+
+    state.gameState?.error ||
+    state.gameState?.noticeMessage ||
+    "Sin errores en el reparto.";
     state.gameState?.error || "Sin errores en el reparto.";
 
   topbar.append(topRow, metaRow, statusMessage, errorMessage);
@@ -2075,6 +2124,8 @@ const renderTableView = () => {
   pot.textContent = `Bote total: ${state.gameState?.bote ?? 0}`;
 
   community.append(communityTitle, phaseLabel, communityCards, pot);
+
+  community.append(communityTitle, phaseLabel, communityCards, pot);
   community.append(communityTitle, communityCards, pot);
 
   const seats = document.createElement("div");
@@ -2093,6 +2144,8 @@ const renderTableView = () => {
     const seat = createSeat(
       player,
       index === state.gameState.turnoIndex,
+
+      revealAI || (player.esHumano && revealHuman),
 
       revealAI || (player.esHumano && revealHuman),
       revealAI || player.esHumano,
@@ -2218,6 +2271,7 @@ const renderTableView = () => {
     overlayContent.append(message, actionButton);
     overlay.appendChild(overlayContent);
     container.appendChild(overlay);
+
   topbar.append(logToggle);
 
   container.append(topbar, pokerTable, resultMessage, logPanel);
