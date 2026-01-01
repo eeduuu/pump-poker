@@ -11,6 +11,20 @@ const state = {
   gameMode: null,
   gameState: null,
   tournamentTimerId: null,
+  aiTimeoutId: null,
+  humanTurnTimerId: null,
+  ui: {
+    revealedPlayerId: null,
+    lastTurnPlayerId: null,
+    overlay: null,
+    humanTimeLeft: null,
+    chatOpen: false,
+    chatMessages: [],
+  },
+
+  gameMode: null,
+  gameState: null,
+  tournamentTimerId: null,
   gameState: null,
 };
 
@@ -141,6 +155,10 @@ const dealInitialHands = (deck, players) => {
       if (player.estado !== "eliminado") {
         player.hand.push(dealCard(deck));
       }
+
+      if (player.estado !== "eliminado") {
+        player.hand.push(dealCard(deck));
+      }
       player.hand.push(dealCard(deck));
     });
   }
@@ -202,6 +220,10 @@ const createPlayers = (config) => {
 };
 
 const getActivePlayers = (gameState) =>
+
+  gameState.players.filter(
+    (player) => player.estado !== "foldeado" && player.estado !== "eliminado"
+  );
 
   gameState.players.filter(
     (player) => player.estado !== "foldeado" && player.estado !== "eliminado"
@@ -284,6 +306,75 @@ const enforceInvariants = (gameState, context) => {
   return true;
 };
 
+
+const showOverlay = (message, actionLabel) => {
+  state.ui.overlay = { message, actionLabel };
+};
+
+const clearOverlay = () => {
+  state.ui.overlay = null;
+};
+
+const startHumanTurnTimer = (playerId) => {
+  stopHumanTurnTimer();
+  state.ui.humanTimeLeft = 30;
+  state.humanTurnTimerId = setInterval(() => {
+    if (!state.gameState || state.gameState.blocked || state.gameState.handOver) {
+      stopHumanTurnTimer();
+      return;
+    }
+    const currentPlayer = state.gameState.players[state.gameState.turnoIndex];
+    if (!currentPlayer || currentPlayer.id !== playerId || !currentPlayer.esHumano) {
+      stopHumanTurnTimer();
+      return;
+    }
+    state.ui.humanTimeLeft -= 1;
+    if (state.ui.humanTimeLeft <= 0) {
+      stopHumanTurnTimer();
+      clearOverlay();
+      handleAction(ACTIONS.FOLD);
+      showOverlay("Pasa el dispositivo al siguiente jugador", "Continuar");
+      runAutoActions();
+      renderTableView();
+    } else {
+      renderTableView();
+    }
+  }, 1000);
+};
+
+const syncTurnUi = () => {
+  const gameState = state.gameState;
+  if (!gameState || gameState.blocked || gameState.handOver) {
+    state.ui.revealedPlayerId = null;
+    state.ui.lastTurnPlayerId = null;
+    clearOverlay();
+    stopHumanTurnTimer();
+    return;
+  }
+
+  const currentPlayer = gameState.players[gameState.turnoIndex];
+  if (!currentPlayer) {
+    clearOverlay();
+    return;
+  }
+
+  if (currentPlayer.esHumano) {
+    if (state.ui.lastTurnPlayerId !== currentPlayer.id) {
+      state.ui.revealedPlayerId = null;
+      showOverlay(
+        `Turno de ${currentPlayer.nombre}`,
+        "Pulsa para ver tus cartas"
+      );
+      startHumanTurnTimer(currentPlayer.id);
+      state.ui.lastTurnPlayerId = currentPlayer.id;
+    }
+  } else {
+    state.ui.revealedPlayerId = null;
+    clearOverlay();
+    stopHumanTurnTimer();
+    state.ui.lastTurnPlayerId = currentPlayer.id;
+  }
+};
 const updateUniqueness = (gameState) => {
   enforceInvariants(gameState, "cards");
 };
@@ -312,6 +403,7 @@ const getBlindIndexes = (gameState, dealerIndex) => {
 
   const smallBlindIndex = getNextLiveIndex(gameState, dealerIndex);
   const bigBlindIndex = getNextLiveIndex(gameState, smallBlindIndex);
+
 const getBlindIndexes = (gameState) => {
   const { players, dealerIndex } = gameState;
   if (players.length === 2) {
@@ -395,6 +487,9 @@ const createGameState = (config) => {
 
       smallBlind: initialBlinds.sb,
       bigBlind: initialBlinds.bb,
+
+      smallBlind: initialBlinds.sb,
+      bigBlind: initialBlinds.bb,
       smallBlind: config.smallBlind,
       bigBlind: config.bigBlind,
     },
@@ -403,6 +498,8 @@ const createGameState = (config) => {
     fase: "preflop",
     deck,
     currentBet: 0,
+
+    minRaise: initialBlinds.bb,
 
     minRaise: initialBlinds.bb,
     minRaise: config.bigBlind,
@@ -461,6 +558,7 @@ const createGameState = (config) => {
 
   enforceInvariants(gameState, "init");
   startTournamentTimer(gameState);
+
   };
 
   logAction(gameState, "Nueva mano iniciada.");
@@ -1162,11 +1260,42 @@ const autoActionForPlayer = () => {
   return true;
 };
 
+
+const scheduleAiAction = () => {
+  if (state.aiTimeoutId) {
+    return;
+  }
+  state.aiTimeoutId = setTimeout(() => {
+    state.aiTimeoutId = null;
+    if (!state.gameState || state.gameState.blocked || state.gameState.handOver) {
+      return;
+    }
+    const currentPlayer = state.gameState.players[state.gameState.turnoIndex];
+    if (!currentPlayer || currentPlayer.esHumano || currentPlayer.estado !== "activo") {
+      return;
+    }
+    autoActionForPlayer();
+    syncTurnUi();
+    runAutoActions();
+    renderTableView();
+  }, 500);
+};
+
 const runAutoActions = () => {
   const gameState = state.gameState;
   if (!gameState || isHandOver(gameState)) {
     return;
   }
+
+
+  const currentPlayer = gameState.players[gameState.turnoIndex];
+  if (!currentPlayer) {
+    return;
+  }
+  if (!currentPlayer.esHumano) {
+    scheduleAiAction();
+  }
+};
 
   let guard = 0;
   while (
@@ -1295,6 +1424,13 @@ const startNewHand = () => {
   } else {
     prepareNextHand(state.gameState);
   }
+
+  state.ui.revealedPlayerId = null;
+  state.ui.lastTurnPlayerId = null;
+  clearOverlay();
+  stopHumanTurnTimer();
+  stopAiDelay();
+  syncTurnUi();
   state.gameState = createGameState(state.gameConfig);
   runAutoActions();
 };
@@ -1435,6 +1571,15 @@ const renderConfigView = () => {
     state.gameConfig = nextConfig;
     state.gameState = createGameState(nextConfig);
     state.currentView = "table";
+
+    state.ui.revealedPlayerId = null;
+    state.ui.lastTurnPlayerId = null;
+    clearOverlay();
+    stopHumanTurnTimer();
+    stopAiDelay();
+    state.ui.chatOpen = false;
+    state.ui.chatMessages = [];
+    syncTurnUi();
     runAutoActions();
     renderTableView();
   });
@@ -1447,6 +1592,22 @@ const renderConfigView = () => {
 const shouldRevealAI = (gameState) =>
   gameState.handOver || allActiveAllIn(gameState);
 
+
+const renderCardFace = (card) => {
+  const span = document.createElement("span");
+  span.className = "card-face";
+  span.textContent = card.rank;
+  const suit = document.createElement("span");
+  suit.textContent = card.suit;
+  if (card.suit === "♥" || card.suit === "♦") {
+    suit.className = "suit suit-red";
+  } else {
+    suit.className = "suit suit-black";
+  }
+  span.appendChild(suit);
+  return span;
+};
+
 const createCardList = (cards, totalSlots = cards.length, hideCards = false) => {
   const list = document.createElement("div");
   list.className = "card-list";
@@ -1454,6 +1615,12 @@ const createCardList = (cards, totalSlots = cards.length, hideCards = false) => 
     const card = document.createElement("span");
     card.className = "card";
     if (cards[i]) {
+
+      if (hideCards) {
+        card.textContent = "🂠";
+      } else {
+        card.appendChild(renderCardFace(cards[i]));
+      }
       card.textContent = hideCards ? "🂠" : getCardLabel(cards[i]);
       if (hideCards) {
         card.classList.add("hidden");
@@ -1475,6 +1642,10 @@ const createSeat = (player, isTurn, revealCards, isHero) => {
   if (player.estado === "foldeado") {
     seat.classList.add("folded");
   }
+
+  if (player.estado === "eliminado") {
+    seat.classList.add("eliminated");
+  }
   if (isHero) {
     seat.classList.add("hero-seat");
   }
@@ -1492,6 +1663,13 @@ const createSeat = (player, isTurn, revealCards, isHero) => {
     const badge = document.createElement("span");
     badge.className = "badge all-in";
     badge.textContent = "All-in";
+    badges.appendChild(badge);
+  }
+
+  if (player.estado === "eliminado") {
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = "Eliminado";
     badges.appendChild(badge);
   }
   if (isTurn) {
@@ -1531,6 +1709,28 @@ const stopTournamentTimer = () => {
     clearInterval(state.tournamentTimerId);
     state.tournamentTimerId = null;
   }
+};
+
+
+const stopAiDelay = () => {
+  if (state.aiTimeoutId) {
+    clearTimeout(state.aiTimeoutId);
+    state.aiTimeoutId = null;
+  }
+};
+
+const stopHumanTurnTimer = () => {
+  if (state.humanTurnTimerId) {
+    clearInterval(state.humanTurnTimerId);
+    state.humanTurnTimerId = null;
+  }
+  state.ui.humanTimeLeft = null;
+};
+
+const clearAllTimers = () => {
+  stopTournamentTimer();
+  stopAiDelay();
+  stopHumanTurnTimer();
 };
 
 const startTournamentTimer = (gameState) => {
@@ -1577,6 +1777,9 @@ const getStatusMessage = (gameState) => {
   }
   const currentPlayer = gameState.players[gameState.turnoIndex];
   if (currentPlayer?.esHumano) {
+
+    const timeLeft = state.ui.humanTimeLeft ?? 30;
+    return `Tu turno (${timeLeft}s)`;
     return "Tu turno";
   }
   if (currentPlayer) {
@@ -1669,11 +1872,54 @@ const renderActions = (gameState, humanPlayer) => {
     gameState.turnoIndex !== -1 &&
     gameState.players[gameState.turnoIndex].id === humanPlayer.id;
 
+
+  const disableActions =
+    !isTurn ||
+    isHandOver(gameState) ||
+    gameState.blocked ||
+    Boolean(state.ui.overlay);
   const disableActions = !isTurn || isHandOver(gameState) || gameState.blocked;
   const callAmount = gameState.currentBet - humanPlayer.apuestaActual;
   const disableCheck = callAmount > 0;
   const disableCall = callAmount <= 0;
 
+
+  const handleHumanAction = (actionType, amountValue) => {
+    handleAction(actionType, amountValue ?? 0);
+    state.ui.revealedPlayerId = null;
+    if (gameState.handOver || gameState.blocked) {
+      clearOverlay();
+    } else {
+      showOverlay("Pasa el dispositivo al siguiente jugador", "Continuar");
+    }
+    stopHumanTurnTimer();
+    syncTurnUi();
+    runAutoActions();
+    renderTableView();
+  };
+
+  const checkButton = makeButton("Check", () => {
+    handleHumanAction(ACTIONS.CHECK);
+  });
+
+  const callButton = makeButton("Call", () => {
+    handleHumanAction(ACTIONS.CALL);
+  });
+
+  const betButton = makeButton("Bet", () => {
+    handleHumanAction(ACTIONS.BET, Number(amountInput.value));
+  });
+
+  const raiseButton = makeButton("Raise", () => {
+    handleHumanAction(ACTIONS.RAISE, Number(amountInput.value));
+  });
+
+  const allInButton = makeButton("All-in", () => {
+    handleHumanAction(ACTIONS.ALL_IN);
+  });
+
+  const foldButton = makeButton("Fold", () => {
+    handleHumanAction(ACTIONS.FOLD);
   const checkButton = makeButton("Check", () => {
     handleAction(ACTIONS.CHECK);
     runAutoActions();
@@ -1771,6 +2017,10 @@ const renderTableView = () => {
   resetButton.textContent = "Nueva mesa";
   resetButton.addEventListener("click", () => {
 
+    clearAllTimers();
+    state.ui.chatOpen = false;
+    state.ui.chatMessages = [];
+
     stopTournamentTimer();
     state.currentView = "config";
     renderConfigView();
@@ -1798,6 +2048,10 @@ const renderTableView = () => {
     state.gameState?.error ||
     state.gameState?.noticeMessage ||
     "Sin errores en el reparto.";
+
+    state.gameState?.error ||
+    state.gameState?.noticeMessage ||
+    "Sin errores en el reparto.";
     state.gameState?.error || "Sin errores en el reparto.";
 
   topbar.append(topRow, metaRow, statusMessage, errorMessage);
@@ -1809,12 +2063,18 @@ const renderTableView = () => {
   community.className = "community";
   const communityTitle = document.createElement("h2");
   communityTitle.textContent = "Comunitarias";
+
+  const phaseLabel = document.createElement("div");
+  phaseLabel.className = "phase-label";
+  phaseLabel.textContent = `Fase: ${state.gameState?.fase ?? "-"}`;
   const communityCards = state.gameState
     ? createCardList(state.gameState.comunitarias, 5)
     : createCardList([], 5);
   const pot = document.createElement("div");
   pot.className = "pot";
   pot.textContent = `Bote total: ${state.gameState?.bote ?? 0}`;
+
+  community.append(communityTitle, phaseLabel, communityCards, pot);
   community.append(communityTitle, communityCards, pot);
 
   const seats = document.createElement("div");
@@ -1825,10 +2085,16 @@ const renderTableView = () => {
   );
   const revealAI = state.gameState ? shouldRevealAI(state.gameState) : false;
 
+
+  const activeTurnId = state.gameState?.players[state.gameState.turnoIndex]?.id;
+  const revealHuman =
+    state.ui.revealedPlayerId && state.ui.revealedPlayerId === activeTurnId;
   state.gameState?.players.forEach((player, index) => {
     const seat = createSeat(
       player,
       index === state.gameState.turnoIndex,
+
+      revealAI || (player.esHumano && revealHuman),
       revealAI || player.esHumano,
       player.esHumano
     );
@@ -1877,6 +2143,81 @@ const renderTableView = () => {
     logToggle.textContent = isOpen ? "Ocultar log" : "Mostrar log";
   });
 
+
+  const chatToggle = document.createElement("button");
+  chatToggle.type = "button";
+  chatToggle.className = "log-toggle";
+  chatToggle.textContent = state.ui.chatOpen ? "Ocultar chat" : "Abrir chat";
+  chatToggle.addEventListener("click", () => {
+    state.ui.chatOpen = !state.ui.chatOpen;
+    renderTableView();
+  });
+
+  const chatPanel = document.createElement("div");
+  chatPanel.className = "chat-panel";
+  if (state.ui.chatOpen) {
+    chatPanel.classList.add("open");
+  }
+  const chatHeader = document.createElement("strong");
+  chatHeader.textContent = "Chat local";
+  const chatList = document.createElement("ul");
+  state.ui.chatMessages.forEach((message) => {
+    const item = document.createElement("li");
+    item.textContent = message;
+    chatList.appendChild(item);
+  });
+  const chatForm = document.createElement("div");
+  chatForm.className = "chat-form";
+  const chatInput = document.createElement("input");
+  chatInput.type = "text";
+  chatInput.placeholder = "Escribe un mensaje";
+  const chatSend = document.createElement("button");
+  chatSend.type = "button";
+  chatSend.textContent = "Enviar";
+  chatSend.addEventListener("click", () => {
+    const value = chatInput.value.trim();
+    if (!value) {
+      return;
+    }
+    state.ui.chatMessages = [...state.ui.chatMessages, value].slice(-30);
+    chatInput.value = "";
+    renderTableView();
+  });
+  chatForm.append(chatInput, chatSend);
+  chatPanel.append(chatHeader, chatList, chatForm);
+
+  topbar.append(logToggle, chatToggle);
+
+  container.append(topbar, pokerTable, resultMessage, logPanel, chatPanel);
+
+  const currentPlayer = state.gameState?.players[state.gameState.turnoIndex];
+  if (state.gameState && currentPlayer?.esHumano) {
+    container.appendChild(renderActions(state.gameState, currentPlayer));
+  }
+
+  if (state.ui.overlay) {
+    const overlay = document.createElement("div");
+    overlay.className = "privacy-overlay";
+    const overlayContent = document.createElement("div");
+    overlayContent.className = "privacy-card";
+    const message = document.createElement("p");
+    message.textContent = state.ui.overlay.message;
+    const actionButton = document.createElement("button");
+    actionButton.type = "button";
+    actionButton.textContent = state.ui.overlay.actionLabel;
+    actionButton.addEventListener("click", () => {
+      const player = state.gameState?.players[state.gameState.turnoIndex];
+      if (player?.esHumano) {
+        state.ui.revealedPlayerId = player.id;
+      }
+      clearOverlay();
+      syncTurnUi();
+      renderTableView();
+      runAutoActions();
+    });
+    overlayContent.append(message, actionButton);
+    overlay.appendChild(overlayContent);
+    container.appendChild(overlay);
   topbar.append(logToggle);
 
   container.append(topbar, pokerTable, resultMessage, logPanel);
