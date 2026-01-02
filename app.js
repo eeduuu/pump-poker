@@ -2117,3 +2117,37 @@ const renderApp = () => {
   renderConfigView();
 };
 renderApp();
+
+// ============================================
+// RESOLUTION SCALER - Escalado automático
+// ============================================
+function scaleGame() {
+  const scaler = document.getElementById('game-scaler');
+  if (!scaler) return;
+  
+  const baseWidth = 1280;
+  const baseHeight = 720;
+  
+  const scaleX = window.innerWidth / baseWidth;
+  const scaleY = window.innerHeight / baseHeight;
+  const scale = Math.min(scaleX, scaleY);
+  
+  scaler.style.transform = `scale(${scale})`;
+  
+  // Centrar después de escalar
+  const scaledWidth = baseWidth * scale;
+  const scaledHeight = baseHeight * scale;
+  scaler.style.left = `${(window.innerWidth - scaledWidth) / 2}px`;
+  scaler.style.top = `${(window.innerHeight - scaledHeight) / 2}px`;
+}
+
+// Escalar al cargar y al redimensionar
+window.addEventListener('load', scaleGame);
+window.addEventListener('resize', scaleGame);
+
+// Escalar también cuando cambie la vista
+const originalRender = renderApp;
+renderApp = function() {
+  originalRender();
+  setTimeout(scaleGame, 50);
+};
