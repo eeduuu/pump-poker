@@ -175,10 +175,13 @@ const getCardLabel = (card) => `${card.rank}${card.suit}`;
 
 const createPlayers = (config) => {
   const players = [];
-  const total = 1 + config.numeroIA; // 1 humano + X IA
+  const total = 1 + config.numeroIA;
+
+  // Posiciones alrededor de la mesa (estilo Winamax)
+  const positions = [4, 0, 1, 2, 3, 5, 6, 7]; // Humano en posición 4 (bottom)
 
   for (let i = 0; i < total; i += 1) {
-    const isHuman = i === 0; // Solo el primer jugador es humano
+    const isHuman = i === 0;
     const aiPersonality = isHuman
       ? null
       : AI_PERSONALITIES[(i - 1) % AI_PERSONALITIES.length];
@@ -196,6 +199,7 @@ const createPlayers = (config) => {
       hand: [],
       apuestaActual: 0,
       estado: "activo",
+      position: positions[i] || i, // ← NUEVA LÍNEA
     });
   }
 
@@ -1553,6 +1557,7 @@ const createCardList = (cards, totalSlots = cards.length, hideCards = false) => 
 const createSeat = (player, isTurn, revealCards, isHero) => {
   const seat = document.createElement("div");
   seat.className = "seat";
+  seat.setAttribute('data-position', player.position || 0); // ← NUEVA LÍNEA
   if (isTurn) {
     seat.classList.add("turn");
   }
@@ -1617,8 +1622,8 @@ const createSeat = (player, isTurn, revealCards, isHero) => {
 };
 
 const getPotTotalForUi = (gameState) =>
-  gameState.bote +
-  gameState.players.reduce((sum, player) => sum + player.apuestaActual, 0);
+  gameState ? gameState.bote +
+  gameState.players.reduce((sum, player) => sum + player.apuestaActual, 0) : 0;
 
 
 const stopTournamentTimer = () => {
@@ -1931,6 +1936,10 @@ const renderTableView = () => {
 
   topbar.append(topRow, metaRow, statusMessage, errorMessage);
 
+  // Wrapper para centrar la mesa
+  const pokerTableWrapper = document.createElement("div");
+  pokerTableWrapper.className = "poker-table-wrapper";
+  
   const pokerTable = document.createElement("div");
   pokerTable.className = "poker-table";
 
@@ -1941,28 +1950,26 @@ const renderTableView = () => {
 
   const phaseLabel = document.createElement("div");
   phaseLabel.className = "phase-label";
-  phaseLabel.textContent = `Fase: ${state.gameState?.fase ?? "-"}`;
+  phaseLabel.textContent = `${state.gameState?.fase ?? "-"}`.toUpperCase();
+  
   const communityCards = state.gameState
-    ? createCardList(state.gameState.comunitarias, 5)
-    : createCardList([], 5);
+    ? createCardList(state.gameState.comunitarias, 5, false)
+    : createCardList([], 5, false);
+    
   const pot = document.createElement("div");
   pot.className = "pot";
-  pot.textContent = `Bote total: ${state.gameState?.bote ?? 0}`;
+  pot.textContent = `Bote: ${getPotTotalForUi(state.gameState)}`;
 
-  community.append(communityTitle, phaseLabel, communityCards, pot);
+  community.append(phaseLabel, communityCards, pot);
 
   const seats = document.createElement("div");
   seats.className = "seats";
 
-  const humanPlayer = state.gameState?.players.find(
-    (player) => player.esHumano
-  );
   const revealAI = state.gameState ? shouldRevealAI(state.gameState) : false;
-
-
   const activeTurnId = state.gameState?.players[state.gameState.turnoIndex]?.id;
   const revealHuman =
     state.ui.revealedPlayerId && state.ui.revealedPlayerId === activeTurnId;
+    
   state.gameState?.players.forEach((player, index) => {
     const seat = createSeat(
       player,
@@ -1974,6 +1981,7 @@ const renderTableView = () => {
   });
 
   pokerTable.append(community, seats);
+  pokerTableWrapper.appendChild(pokerTable);
 
   const resultMessage = document.createElement("div");
   resultMessage.className = "result-message";
@@ -2065,7 +2073,7 @@ const renderTableView = () => {
 
   topbar.append(logToggle, chatToggle);
 
-  container.append(topbar, pokerTable, resultMessage, logPanel, chatPanel);
+  container.append(topbar, pokerTableWrapper, resultMessage, logPanel, chatPanel);
 
   if (state.gameState && humanPlayer) {
     container.appendChild(renderActions(state.gameState, humanPlayer));
